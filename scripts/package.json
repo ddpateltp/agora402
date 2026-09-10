@@ -1,1 +1,20 @@
-{"name":"@agora402/scripts","version":"0.1.0","private":true,"type":"module"}
+{
+  "name": "@agora402/scripts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b",
+    "topics": "tsx src/create-topics.ts",
+    "token": "tsx src/create-token.ts",
+    "register": "tsx src/register.ts",
+    "balance": "tsx src/balance.ts"
+  },
+  "dependencies": {
+    "@agora402/registry": "*",
+    "@agora402/seller": "*",
+    "@agora402/shared": "*",
+    "@hiero-ledger/sdk": "2.85.0",
+    "dotenv": "^16.4.7"
+  }
+}
