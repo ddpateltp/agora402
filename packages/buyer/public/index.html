@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agora402 buyer</title>
+<style>
+  :root { --bg:#0b0f14; --panel:#121923; --line:#1f2a37; --text:#e6edf3; --muted:#8b98a5; --accent:#8259ef; --ok:#3fb950; --warn:#d29922; --bad:#f85149; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { display:flex; align-items:baseline; gap:16px; padding:18px 24px; border-bottom:1px solid var(--line); }
+  header h1 { margin:0; font-size:18px; letter-spacing:.3px; }
+  header .sub { color:var(--muted); }
+  main { display:grid; grid-template-columns: 380px 1fr; gap:16px; padding:16px 24px; }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px; }
+  h2 { margin:0 0 12px; font-size:13px; text-transform:uppercase; letter-spacing:.8px; color:var(--muted); }
+  label { display:block; color:var(--muted); font-size:12px; margin:10px 0 4px; }
+  input, textarea, select { width:100%; background:#0d1218; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; }
+  textarea { min-height:84px; resize:vertical; }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  button { margin-top:14px; width:100%; background:var(--accent); color:#fff; border:0; border-radius:6px; padding:10px; font:inherit; font-weight:600; cursor:pointer; }
+  button[disabled] { opacity:.5; cursor:wait; }
+  .stages { display:flex; flex-direction:column; gap:6px; }
+  .stage { display:grid; grid-template-columns:90px 130px 1fr; gap:10px; padding:6px 8px; border-radius:6px; background:#0d1218; border:1px solid var(--line); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; }
+  .stage .t { color:var(--muted); }
+  .stage .s { color:var(--accent); }
+  .stage.settled .s, .stage.verified .s, .stage.quoted .s { color:var(--ok); }
+  .stage.failed .s, .stage.quote_rejected .s { color:var(--bad); }
+  .stage.payment_required .s, .stage.paying .s { color:var(--warn); }
+  .result { margin-top:14px; padding:12px; border-radius:8px; background:#0d1218; border:1px solid var(--line); white-space:pre-wrap; }
+  .kv { display:grid; grid-template-columns:130px 1fr; gap:4px 12px; font-size:13px; margin-top:10px; }
+  .kv div:nth-child(odd) { color:var(--muted); }
+  a { color:#79c0ff; text-decoration:none; }
+  .sellers .card { padding:10px; border:1px solid var(--line); border-radius:8px; margin-bottom:8px; background:#0d1218; }
+  .sellers .card b { display:block; }
+  .sellers .card small { color:var(--muted); word-break:break-all; }
+  .pill { display:inline-block; padding:1px 8px; border-radius:999px; border:1px solid var(--line); color:var(--muted); font-size:11px; margin:2px 4px 0 0; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  td, th { text-align:left; padding:6px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:500; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); }
+  footer { color:var(--muted); padding:8px 24px 24px; font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Agora402</h1>
+  <span class="sub" id="who">buyer agent</span>
+  <span class="sub" id="budget"></span>
+</header>
+<main>
+  <div>
+    <section>
+      <h2>Task</h2>
+      <label>Task</label>
+      <select id="task"><option value="infer">Buy an LLM completion (metered per token)</option><option value="rate">Buy a live HBAR/USD quote (per query)</option></select>
+      <label>Prompt</label>
+      <textarea id="prompt">Explain in two sentences why an AI agent would pay for an API call with x402 on Hedera instead of using an API key.</textarea>
+      <div class="row">
+        <div><label>Max output tokens</label><input id="maxTokens" type="number" value="200" /></div>
+        <div><label>Offer % of list price</label><input id="counter" type="number" value="90" min="50" max="100" /></div>
+      </div>
+      <div class="row">
+        <div><label>Session budget (HBAR)</label><input id="budgetIn" value="0.5" /></div>
+        <div><label>Cap per call (HBAR)</label><input id="maxCall" value="0.05" /></div>
+      </div>
+      <label>Seller URL (blank = use registry)</label>
+      <input id="seller" placeholder="http://localhost:4402" />
+      <button id="go">Discover, negotiate, pay</button>
+    </section>
+    <section style="margin-top:16px" class="sellers">
+      <h2>Sellers <span id="regsrc"></span></h2>
+      <div id="sellers">loading...</div>
+    </section>
+  </div>
+  <div>
+    <section>
+      <h2>Live payment flow</h2>
+      <div class="stages" id="stages"><div class="stage"><span class="t">--</span><span class="s">idle</span><span>run a task to see every step: discover, quote, 402, sign, settle, verify</span></div></div>
+      <div id="result"></div>
+    </section>
+    <section style="margin-top:16px">
+      <h2>Receipts on HCS <span id="rtopic"></span></h2>
+      <div id="receipts">no receipts topic configured</div>
+    </section>
+  </div>
+</main>
+<footer>x402 exact scheme on Hedera, settled by Blocky402. Listings and receipts on the Hedera Consensus Service. Every amount shown is recomputed from the public mirror node.</footer>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let cfg = {};
+
+async function loadConfig() {
+  cfg = await (await fetch('/api/config')).json();
+  $('who').textContent = `buyer ${cfg.buyer} on hedera:${cfg.network}`;
+  $('budget').textContent = cfg.remaining ? `spent ${cfg.spent}, remaining ${cfg.remaining}` : '';
+  if (cfg.sellerUrl && !$('seller').value && !cfg.registryTopic) $('seller').value = cfg.sellerUrl;
+  $('regsrc').innerHTML = cfg.registryTopic ? `<a href="${cfg.registryUrl}" target="_blank">topic ${cfg.registryTopic}</a>` : '(direct)';
+}
+
+async function loadSellers() {
+  const q = new URLSearchParams({ seller: $('seller').value, budget: $('budgetIn').value, maxCall: $('maxCall').value });
+  const r = await (await fetch('/api/sellers?' + q)).json();
+  if (r.error) { $('sellers').textContent = r.error; return; }
+  if (!r.listings.length) { $('sellers').textContent = 'no sellers found'; return; }
+  $('sellers').innerHTML = r.listings.map((l) => `<div class="card"><b>${esc(l.name)} <span class="pill">payTo ${esc(l.payTo)}</span></b><small>${esc(l.uaid)}</small><div>${l.endpoints.map((e) => `<span class="pill">${esc(e.method)} ${esc(e.path)} · ${e.accepts.map((a) => a.symbol).join('/')}</span>`).join('')}</div><small><a href="${esc(l.baseUrl)}/.well-known/agora402.json" target="_blank">manifest</a> · <a href="${esc(l.baseUrl)}/.well-known/agent.json" target="_blank">agent card</a></small></div>`).join('');
+}
+
+async function loadReceipts() {
+  const r = await (await fetch('/api/receipts')).json();
+  if (!r.topic) return;
+  $('rtopic').innerHTML = `<a href="${r.topicUrl}" target="_blank">topic ${r.topic}</a>`;
+  if (r.error) { $('receipts').textContent = r.error; return; }
+  if (!r.receipts.length) { $('receipts').textContent = 'no receipts yet'; return; }
+  $('receipts').innerHTML = `<table><tr><th>#</th><th>chain</th><th>tx</th><th>amount</th><th>payer</th><th>resource</th><th>usage</th></tr>` + r.receipts.map((x) => {
+    const rc = x.receipt; const hbar = rc.asset === '0.0.0' ? (Number(rc.amount) / 1e8).toFixed(8) + ' HBAR' : rc.amount + ' ' + rc.asset;
+    return `<tr><td>${x.sequenceNumber}</td><td class="${x.matchesChain ? 'ok' : 'bad'}">${x.matchesChain ? 'match' : 'MISMATCH'}</td><td><a target="_blank" href="https://hashscan.io/${cfg.network}/transaction/${encodeURIComponent(rc.transactionId)}">${esc(rc.transactionId)}</a></td><td>${hbar}</td><td>${esc(rc.payer)}</td><td>${esc(rc.resource)}</td><td>${esc(JSON.stringify(rc.usage))}</td></tr>`;
+  }).join('') + '</table>';
+}
+
+function addStage(e) {
+  const d = document.createElement('div');
+  d.className = 'stage ' + e.stage;
+  d.innerHTML = `<span class="t">${esc(e.at.slice(11, 23))}</span><span class="s">${esc(e.stage)}</span><span>${esc(e.message)}</span>`;
+  $('stages').appendChild(d);
+  d.scrollIntoView({ block: 'nearest' });
+}
+
+$('go').onclick = () => {
+  $('go').disabled = true;
+  $('stages').innerHTML = '';
+  $('result').innerHTML = '';
+  const q = new URLSearchParams({
+    task: $('task').value, prompt: $('prompt').value, maxTokens: $('maxTokens').value, counter: $('counter').value,
+    budget: $('budgetIn').value, maxCall: $('maxCall').value, seller: $('seller').value,
+  });
+  const es = new EventSource('/api/run?' + q);
+  es.addEventListener('stage', (ev) => addStage(JSON.parse(ev.data)));
+  es.addEventListener('result', (ev) => {
+    const r = JSON.parse(ev.data);
+    const text = r.body && r.body.choices ? r.body.choices[0].message.content : JSON.stringify(r.body, null, 2);
+    $('result').innerHTML = `<div class="result">${esc(text)}</div><div class="kv">
+      <div>seller</div><div>${esc(r.seller)}</div>
+      <div>list price</div><div>${esc(r.listPrice)}</div>
+      <div>negotiated</div><div>${r.quote ? esc(r.quote.amount) + ' (quote ' + esc(r.quote.quoteId) + ')' : 'no quote'}</div>
+      <div>paid</div><div>${esc(r.amount ?? 'nothing')}</div>
+      <div>transaction</div><div>${r.hashscanUrl ? `<a target="_blank" href="${r.hashscanUrl}">${esc(r.transaction)}</a>` : '-'}</div>
+      <div>mirror node</div><div>${r.onChain ? esc(r.onChain.result + ' at ' + r.onChain.consensus) : 'not yet visible'}</div>
+      <div>session</div><div>spent ${esc(r.spent)}, remaining ${esc(r.remaining)}</div></div>`;
+    $('budget').textContent = `spent ${r.spent}, remaining ${r.remaining}`;
+    setTimeout(loadReceipts, 4000);
+  });
+  es.addEventListener('error', (ev) => {
+    if (ev.data) addStage({ stage: 'failed', at: new Date().toISOString(), message: JSON.parse(ev.data).message });
+    es.close(); $('go').disabled = false;
+  });
+  es.onerror = () => { es.close(); $('go').disabled = false; };
+};
+
+$('seller').addEventListener('change', loadSellers);
+loadConfig().then(loadSellers).then(loadReceipts);
+</script>
+</body>
+</html>
