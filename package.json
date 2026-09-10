@@ -1,0 +1,34 @@
+{
+  "name": "agora402",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agora402: an agent-to-agent services marketplace on Hedera. Discover, negotiate and pay per request over x402, settled through Blocky402, with HCS receipts.",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "scripts"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "tsc -b packages/shared packages/registry packages/seller packages/buyer scripts",
+    "test": "vitest run",
+    "seller": "npm run dev --workspace=packages/seller",
+    "buyer": "npm run cli --workspace=packages/buyer --",
+    "dev": "concurrently --names seller,buyer-ui --prefix-colors cyan,magenta \"npm run seller\" \"npm run dev --workspace=packages/buyer\"",
+    "setup:topics": "npm run topics --workspace=scripts",
+    "setup:token": "npm run token --workspace=scripts",
+    "setup:register": "npm run register --workspace=scripts",
+    "lint": "eslint packages scripts --ext .ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "concurrently": "^9.1.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
