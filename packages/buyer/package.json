@@ -1,1 +1,33 @@
-{"name":"@agora402/buyer","version":"0.1.0","private":true,"type":"module"}
+{
+  "name": "@agora402/buyer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "agora": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "cli": "tsx src/cli.ts",
+    "dev": "tsx watch src/dashboard.ts",
+    "start": "node dist/dashboard.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@agora402/registry": "*",
+    "@agora402/shared": "*",
+    "@hiero-ledger/sdk": "2.85.0",
+    "@x402/core": "^2.25.0",
+    "@x402/fetch": "^2.25.0",
+    "@x402/hedera": "^2.25.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@agora402/seller": "^0.1.0",
+    "@types/express": "^4.17.21"
+  }
+}

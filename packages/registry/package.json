@@ -17,6 +17,6 @@
   },
   "dependencies": {
     "@agora402/shared": "*",
-    "@hiero-ledger/sdk": "^2.88.0"
+    "@hiero-ledger/sdk": "2.85.0"
   }
 }
