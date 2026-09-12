@@ -99,7 +99,7 @@ app.post('/api/run', async (req: Request, res: Response) => {
     const r =
       body.task === 'rate'
         ? await a.hbarRate({ sellerUrl })
-        : await a.infer(body.prompt || 'Explain x402 in one sentence.', { sellerUrl, maxTokens: Number(body.maxTokens ?? 200), counterBps: counter });
+        : await a.infer(body.prompt || 'Explain x402 in one sentence.', { sellerUrl, maxTokens: Number(body.maxTokens ?? 400), counterBps: counter });
     const chat = r.body as { choices?: Array<{ message?: { content?: string } }>; usage?: Record<string, number>; model?: string } | Record<string, unknown>;
     const answer = 'choices' in chat && Array.isArray(chat.choices) ? chat.choices[0]?.message?.content ?? '' : null;
     send({

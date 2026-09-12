@@ -111,7 +111,7 @@ async function main() {
     const prompt = positionals(rest).join(' ').trim();
     if (!prompt) throw new Error('prompt required: agora infer "your question"');
     const counter = arg('counter') ? Math.round(Number(arg('counter')) * 100) : undefined;
-    const r = await agent.infer(prompt, { sellerUrl, maxTokens: Number(arg('max-tokens') ?? 200), counterBps: counter });
+    const r = await agent.infer(prompt, { sellerUrl, maxTokens: Number(arg('max-tokens') ?? 400), counterBps: counter });
     if (json) {
       console.log(JSON.stringify({ ...r, amount: r.amount?.toString(), offer: { seller: r.offer.listing.name, listPrice: r.offer.listPrice.toString() } }, null, 2));
       return;
