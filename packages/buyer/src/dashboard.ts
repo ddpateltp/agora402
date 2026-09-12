@@ -114,6 +114,13 @@ app.post('/api/run', async (req: Request, res: Response) => {
       seller: r.offer.listing.name,
       sellerUaid: r.offer.listing.uaid,
       payTo: r.offer.listing.payTo,
+      facilitator: r.offer.listing.facilitator,
+      resource: r.offer.endpoint.path,
+      endpointId: r.offer.endpoint.id,
+      // The UI formats every amount with BigInt, so it needs the asset's decimals and label.
+      asset: r.asset ?? r.offer.option.asset,
+      symbol: r.offer.option.symbol,
+      decimals: r.offer.option.decimals,
       listPrice: r.offer.listPrice.toString(),
       quote: r.quote ? { quoteId: r.quote.quoteId, amount: r.quote.amount, expiresAt: r.quote.expiresAt, countered: Boolean((r.quote.basis as { countered?: boolean })?.countered) } : null,
       paid: r.amount !== null ? r.amount.toString() : null,
