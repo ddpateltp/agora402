@@ -3,162 +3,395 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Agora402 buyer</title>
+<title>Agora402 · buyer agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <style>
-  :root { --bg:#0b0f14; --panel:#121923; --line:#1f2a37; --text:#e6edf3; --muted:#8b98a5; --accent:#8259ef; --ok:#3fb950; --warn:#d29922; --bad:#f85149; }
+  :root {
+    --bg: #0a0d14; --bg-2: #0f1420; --panel: #121826; --panel-2: #171e2e; --line: #222b3d; --line-2: #2c3750;
+    --text: #e8edf5; --muted: #8e9ab0; --dim: #5d6880;
+    --accent: #8b5cf6; --accent-2: #22d3ee; --ok: #34d399; --warn: #fbbf24; --bad: #f87171;
+    --radius: 14px; --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
   * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-  header { display:flex; align-items:baseline; gap:16px; padding:18px 24px; border-bottom:1px solid var(--line); }
-  header h1 { margin:0; font-size:18px; letter-spacing:.3px; }
-  header .sub { color:var(--muted); }
-  main { display:grid; grid-template-columns: 380px 1fr; gap:16px; padding:16px 24px; }
-  section { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px; }
-  h2 { margin:0 0 12px; font-size:13px; text-transform:uppercase; letter-spacing:.8px; color:var(--muted); }
-  label { display:block; color:var(--muted); font-size:12px; margin:10px 0 4px; }
-  input, textarea, select { width:100%; background:#0d1218; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; }
-  textarea { min-height:84px; resize:vertical; }
-  .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-  button { margin-top:14px; width:100%; background:var(--accent); color:#fff; border:0; border-radius:6px; padding:10px; font:inherit; font-weight:600; cursor:pointer; }
-  button[disabled] { opacity:.5; cursor:wait; }
-  .stages { display:flex; flex-direction:column; gap:6px; }
-  .stage { display:grid; grid-template-columns:90px 130px 1fr; gap:10px; padding:6px 8px; border-radius:6px; background:#0d1218; border:1px solid var(--line); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; }
-  .stage .t { color:var(--muted); }
-  .stage .s { color:var(--accent); }
-  .stage.settled .s, .stage.verified .s, .stage.quoted .s { color:var(--ok); }
-  .stage.failed .s, .stage.quote_rejected .s { color:var(--bad); }
-  .stage.payment_required .s, .stage.paying .s { color:var(--warn); }
-  .result { margin-top:14px; padding:12px; border-radius:8px; background:#0d1218; border:1px solid var(--line); white-space:pre-wrap; }
-  .kv { display:grid; grid-template-columns:130px 1fr; gap:4px 12px; font-size:13px; margin-top:10px; }
-  .kv div:nth-child(odd) { color:var(--muted); }
-  a { color:#79c0ff; text-decoration:none; }
-  .sellers .card { padding:10px; border:1px solid var(--line); border-radius:8px; margin-bottom:8px; background:#0d1218; }
-  .sellers .card b { display:block; }
-  .sellers .card small { color:var(--muted); word-break:break-all; }
-  .pill { display:inline-block; padding:1px 8px; border-radius:999px; border:1px solid var(--line); color:var(--muted); font-size:11px; margin:2px 4px 0 0; }
-  table { width:100%; border-collapse:collapse; font-size:12px; }
-  td, th { text-align:left; padding:6px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
-  th { color:var(--muted); font-weight:500; }
-  .ok { color:var(--ok); } .bad { color:var(--bad); }
-  footer { color:var(--muted); padding:8px 24px 24px; font-size:12px; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+  body { background: radial-gradient(1200px 600px at 10% -10%, rgba(139,92,246,.18), transparent 60%), radial-gradient(900px 500px at 100% 0%, rgba(34,211,238,.12), transparent 55%), var(--bg); min-height: 100vh; }
+  a { color: var(--accent-2); text-decoration: none; } a:hover { text-decoration: underline; }
+  .mono { font-family: var(--mono); font-size: 12px; }
+  .muted { color: var(--muted); } .dim { color: var(--dim); }
+
+  header { display: flex; align-items: center; gap: 18px; padding: 16px 28px; border-bottom: 1px solid var(--line); background: rgba(10,13,20,.7); backdrop-filter: blur(10px); position: sticky; top: 0; z-index: 5; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .mark { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), #6d28d9); display: grid; place-items: center; box-shadow: 0 6px 20px rgba(139,92,246,.35); }
+  .mark svg { width: 20px; height: 20px; }
+  .brand h1 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: .2px; }
+  .brand p { margin: 0; font-size: 12px; color: var(--muted); }
+  .spacer { flex: 1; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--panel); font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .pill b { color: var(--text); font-weight: 600; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px rgba(52,211,153,.18); }
+  .budget { min-width: 240px; }
+  .budget .bar { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; margin-top: 6px; }
+  .budget .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .5s ease; }
+  .budget .row { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  .budget .row b { color: var(--text); font-weight: 600; }
+
+  main { display: grid; grid-template-columns: 350px minmax(0, 1fr) 340px; gap: 18px; padding: 22px 28px 40px; max-width: 1600px; margin: 0 auto; }
+  @media (max-width: 1250px) { main { grid-template-columns: 340px minmax(0,1fr); } .col-right { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; } }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } .col-right { grid-template-columns: 1fr; } }
+  .col { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+
+  .card { background: linear-gradient(180deg, var(--panel), var(--bg-2)); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+  .card h2 { margin: 0 0 14px; font-size: 12px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .card h2 .right { margin-left: auto; font-weight: 500; letter-spacing: 0; text-transform: none; font-size: 12px; }
+
+  .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 14px; }
+  .tabs button { background: transparent; border: 0; color: var(--muted); padding: 9px 10px; border-radius: 8px; font: inherit; font-weight: 600; cursor: pointer; }
+  .tabs button.on { background: var(--panel-2); color: var(--text); box-shadow: inset 0 0 0 1px var(--line-2); }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 6px; }
+  input, textarea, select { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line-2); border-radius: 10px; padding: 10px 12px; font: inherit; outline: none; transition: border .15s, box-shadow .15s; }
+  input:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(139,92,246,.18); }
+  textarea { min-height: 96px; resize: vertical; line-height: 1.5; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .hint { font-size: 11px; color: var(--dim); margin-top: 4px; }
+  .primary { margin-top: 16px; width: 100%; border: 0; border-radius: 10px; padding: 12px 14px; font: inherit; font-weight: 700; color: #fff; cursor: pointer; background: linear-gradient(135deg, var(--accent), #6d28d9); box-shadow: 0 8px 24px rgba(139,92,246,.35); display: flex; align-items: center; justify-content: center; gap: 10px; transition: transform .1s, filter .15s; }
+  .primary:hover { filter: brightness(1.08); } .primary:active { transform: translateY(1px); }
+  .primary[disabled] { filter: grayscale(.4) brightness(.8); cursor: progress; }
+  .spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; animation: spin .8s linear infinite; display: none; }
+  .primary[disabled] .spinner { display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* stepper */
+  .steps { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+  .step { position: relative; padding: 12px 10px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); min-height: 92px; transition: border-color .2s, background .2s; }
+  .step .n { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; color: var(--muted); border: 1px solid var(--line-2); background: var(--panel); margin-bottom: 8px; }
+  .step .t { font-weight: 600; font-size: 12px; }
+  .step .m { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.35; word-break: break-word; }
+  .step.active { border-color: var(--accent); background: rgba(139,92,246,.08); }
+  .step.active .n { border-color: var(--accent); color: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+  .step.done { border-color: rgba(52,211,153,.5); }
+  .step.done .n { background: var(--ok); color: #05261a; border-color: var(--ok); }
+  .step.failed { border-color: var(--bad); background: rgba(248,113,113,.08); }
+  .step.failed .n { background: var(--bad); color: #fff; border-color: var(--bad); }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(139,92,246,.5);} 50% { box-shadow: 0 0 0 6px rgba(139,92,246,0);} }
+  .log { margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 10px; display: none; max-height: 220px; overflow: auto; }
+  .log.show { display: block; }
+  .log div { display: grid; grid-template-columns: 92px 130px 1fr; gap: 10px; padding: 3px 0; font-family: var(--mono); font-size: 11.5px; }
+  .log .s { color: var(--accent-2); } .log .failed .s, .log .quote_rejected .s { color: var(--bad); }
+  .toggle { background: none; border: 0; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+  .toggle:hover { color: var(--text); }
+
+  /* response */
+  .empty { color: var(--dim); text-align: center; padding: 34px 10px; border: 1px dashed var(--line); border-radius: 12px; }
+  .answer { font-size: 15px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; padding: 16px 18px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; border-left: 3px solid var(--accent); }
+  .answer code { font-family: var(--mono); font-size: 12.5px; background: var(--panel-2); padding: 1px 5px; border-radius: 5px; }
+  .answer pre { background: var(--panel-2); padding: 12px; border-radius: 8px; overflow: auto; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .chip { font-size: 12px; padding: 4px 9px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line); color: var(--muted); }
+  .chip b { color: var(--text); font-weight: 600; }
+  .kv { display: grid; grid-template-columns: 150px 1fr; gap: 8px 14px; font-size: 13px; }
+  .kv .k { color: var(--muted); } .kv .v { word-break: break-all; }
+  .big { font-size: 26px; font-weight: 700; letter-spacing: -.5px; }
+  .price { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+  .price div { background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  .price .l { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+  .price .v { font-size: 18px; font-weight: 700; margin-top: 4px; }
+  .price .s { font-size: 11px; color: var(--ok); margin-top: 2px; }
+  .price .strike { text-decoration: line-through; color: var(--dim); font-weight: 500; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+  .badge.ok { background: rgba(52,211,153,.15); color: var(--ok); } .badge.bad { background: rgba(248,113,113,.15); color: var(--bad); } .badge.warn { background: rgba(251,191,36,.15); color: var(--warn); }
+  .transfer { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 12px; margin-top: 12px; padding: 10px 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; flex-wrap: wrap; }
+  .transfer .arrow { color: var(--accent-2); }
+
+  /* sellers */
+  .seller { padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); margin-bottom: 10px; }
+  .seller .name { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+  .seller .name .dot { margin-left: auto; }
+  .seller .dot.off { background: var(--dim); box-shadow: none; }
+  .seller .uaid { font-family: var(--mono); font-size: 10.5px; color: var(--dim); word-break: break-all; margin: 4px 0 8px; }
+  .ep { display: flex; gap: 8px; align-items: baseline; font-size: 12px; padding: 5px 0; border-top: 1px dashed var(--line); }
+  .ep .path { font-family: var(--mono); color: var(--text); }
+  .ep .pr { margin-left: auto; color: var(--muted); white-space: nowrap; }
+
+  /* receipts and history */
+  .rc { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); margin-bottom: 8px; font-size: 12px; }
+  .rc .top { display: flex; align-items: center; gap: 8px; }
+  .rc .top .amt { font-weight: 700; } .rc .top .badge { margin-left: auto; }
+  .rc .sub { color: var(--muted); margin-top: 4px; font-family: var(--mono); font-size: 11px; word-break: break-all; }
+  .hist { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px dashed var(--line); font-size: 12.5px; }
+  .hist .p { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+  .hist .a { color: var(--ok); font-weight: 600; white-space: nowrap; }
+  footer { text-align: center; color: var(--dim); font-size: 12px; padding: 0 28px 28px; }
+  .err { color: var(--bad); background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.3); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
 </style>
 </head>
 <body>
 <header>
-  <h1>Agora402</h1>
-  <span class="sub" id="who">buyer agent</span>
-  <span class="sub" id="budget"></span>
+  <div class="brand">
+    <div class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10h18M5 10v8M12 10v8M19 10v8M3 20h18M12 3l9 7H3l9-7z"/></svg></div>
+    <div><h1>Agora402</h1><p>Agents discover, negotiate and pay per request on Hedera</p></div>
+  </div>
+  <div class="spacer"></div>
+  <span class="pill" id="netPill"><span class="dot"></span> <b id="netName">hedera:testnet</b></span>
+  <span class="pill">buyer <b><a id="buyerLink" href="#" target="_blank">0.0.—</a></b></span>
+  <div class="pill budget" style="display:block; padding:8px 12px">
+    <div class="row"><span>session spent <b id="spent">0 HBAR</b></span><span>left <b id="remaining">—</b></span></div>
+    <div class="bar"><i id="bar"></i></div>
+  </div>
 </header>
+
 <main>
-  <div>
-    <section>
-      <h2>Task</h2>
-      <label>Task</label>
-      <select id="task"><option value="infer">Buy an LLM completion (metered per token)</option><option value="rate">Buy a live HBAR/USD quote (per query)</option></select>
-      <label>Prompt</label>
-      <textarea id="prompt">Explain in two sentences why an AI agent would pay for an API call with x402 on Hedera instead of using an API key.</textarea>
-      <div class="row">
-        <div><label>Max output tokens</label><input id="maxTokens" type="number" value="200" /></div>
-        <div><label>Offer % of list price</label><input id="counter" type="number" value="90" min="50" max="100" /></div>
+  <div class="col">
+    <section class="card">
+      <h2>Buy a service</h2>
+      <div class="tabs"><button class="on" data-task="infer">LLM completion</button><button data-task="rate">HBAR/USD rate</button></div>
+      <div id="inferFields">
+        <label>Prompt</label>
+        <textarea id="prompt">Explain in two sentences why an AI agent would pay for an API call with x402 on Hedera instead of using an API key.</textarea>
+        <div class="grid2">
+          <div><label>Max output tokens</label><input id="maxTokens" type="number" value="200" min="16" /></div>
+          <div><label>Offer, % of list price</label><input id="counter" type="number" value="90" min="50" max="100" /><div class="hint">Below the seller's floor (85%) the quote is refused.</div></div>
+        </div>
       </div>
-      <div class="row">
-        <div><label>Session budget (HBAR)</label><input id="budgetIn" value="0.5" /></div>
+      <div id="rateFields" style="display:none"><p class="muted" style="margin:6px 0 0">One live HBAR/USD quote from the Hedera network rate file, priced per query.</p></div>
+      <div class="grid2">
+        <div><label>Session budget (HBAR)</label><input id="budget" value="0.5" /></div>
         <div><label>Cap per call (HBAR)</label><input id="maxCall" value="0.05" /></div>
       </div>
-      <label>Seller URL (blank = use registry)</label>
+      <label>Seller URL <span class="dim">(blank = read the registry)</span></label>
       <input id="seller" placeholder="http://localhost:4402" />
-      <button id="go">Discover, negotiate, pay</button>
+      <button class="primary" id="go"><span class="spinner"></span><span id="goLabel">Discover, negotiate, pay</span></button>
+      <div class="hint" style="margin-top:8px">Budgets are enforced by the agent before it signs. Failed calls are never charged.</div>
     </section>
-    <section style="margin-top:16px" class="sellers">
-      <h2>Sellers <span id="regsrc"></span></h2>
-      <div id="sellers">loading...</div>
+
+    <section class="card">
+      <h2>Marketplace <span class="right" id="regLink"></span></h2>
+      <div id="sellers"><div class="empty">loading sellers…</div></div>
     </section>
   </div>
-  <div>
-    <section>
-      <h2>Live payment flow</h2>
-      <div class="stages" id="stages"><div class="stage"><span class="t">--</span><span class="s">idle</span><span>run a task to see every step: discover, quote, 402, sign, settle, verify</span></div></div>
-      <div id="result"></div>
+
+  <div class="col">
+    <section class="card">
+      <h2>Payment flow <span class="right"><button class="toggle" id="logToggle">show raw events</button></span></h2>
+      <div class="steps" id="steps"></div>
+      <div class="log" id="log"></div>
     </section>
-    <section style="margin-top:16px">
-      <h2>Receipts on HCS <span id="rtopic"></span></h2>
-      <div id="receipts">no receipts topic configured</div>
+
+    <section class="card">
+      <h2>Response <span class="right" id="respMeta"></span></h2>
+      <div id="response"><div class="empty">Run a task. The seller's answer appears here once the payment has settled.</div></div>
+    </section>
+
+    <section class="card">
+      <h2>Receipt <span class="right" id="txLink"></span></h2>
+      <div id="receipt"><div class="empty">Price breakdown, settlement transaction and mirror node confirmation.</div></div>
+    </section>
+  </div>
+
+  <div class="col col-right">
+    <section class="card">
+      <h2>Audit trail on HCS <span class="right" id="rcLink"></span></h2>
+      <div id="receipts"><div class="empty">no receipts topic configured</div></div>
+    </section>
+    <section class="card">
+      <h2>This session</h2>
+      <div id="history"><div class="empty">no calls yet</div></div>
     </section>
   </div>
 </main>
-<footer>x402 exact scheme on Hedera, settled by Blocky402. Listings and receipts on the Hedera Consensus Service. Every amount shown is recomputed from the public mirror node.</footer>
+<footer>x402 exact scheme on Hedera · settled by Blocky402 · listings and receipts on the Hedera Consensus Service · every amount recomputed from the public mirror node</footer>
+
 <script>
 const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let cfg = {};
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const DEMO = new URLSearchParams(location.search).has('demo');
+const tiny = (v) => BigInt(String(v));
+const hbar = (v, d = 8) => { const n = tiny(v); const neg = n < 0n; const a = neg ? -n : n; const w = a / 100000000n; const f = (a % 100000000n).toString().padStart(8, '0').replace(/0+$/, ''); return `${neg ? '-' : ''}${w}${f ? '.' + f.slice(0, d) : ''} HBAR`; };
+const short = (s, n = 18) => (s && s.length > n ? s.slice(0, n) + '…' : s);
+const STEPS = [
+  { id: 'discover', title: 'Discover', stages: ['discovering', 'discovered'], hint: 'read the HCS registry' },
+  { id: 'quote', title: 'Quote', stages: ['quoting', 'quoted', 'quote_rejected'], hint: 'A2A negotiation' },
+  { id: 'p402', title: '402', stages: ['requesting', 'payment_required'], hint: 'seller prices the request' },
+  { id: 'sign', title: 'Sign', stages: ['paying', 'paid'], hint: 'buyer signs a transfer' },
+  { id: 'settle', title: 'Settle', stages: ['settled'], hint: 'Blocky402 submits to Hedera' },
+  { id: 'verify', title: 'Verify', stages: ['verifying', 'verified'], hint: 'mirror node confirms' },
+];
+const DONE = new Set(['discovered', 'quoted', 'payment_required', 'paid', 'settled', 'verified']);
+let cfg = {}, task = 'infer', history = [], budgetTiny = 50000000n;
 
-async function loadConfig() {
-  cfg = await (await fetch('/api/config')).json();
-  $('who').textContent = `buyer ${cfg.buyer} on hedera:${cfg.network}`;
-  $('budget').textContent = cfg.remaining ? `spent ${cfg.spent}, remaining ${cfg.remaining}` : '';
-  if (cfg.sellerUrl && !$('seller').value && !cfg.registryTopic) $('seller').value = cfg.sellerUrl;
-  $('regsrc').innerHTML = cfg.registryTopic ? `<a href="${cfg.registryUrl}" target="_blank">topic ${cfg.registryTopic}</a>` : '(direct)';
-}
-
-async function loadSellers() {
-  const q = new URLSearchParams({ seller: $('seller').value, budget: $('budgetIn').value, maxCall: $('maxCall').value });
-  const r = await (await fetch('/api/sellers?' + q)).json();
-  if (r.error) { $('sellers').textContent = r.error; return; }
-  if (!r.listings.length) { $('sellers').textContent = 'no sellers found'; return; }
-  $('sellers').innerHTML = r.listings.map((l) => `<div class="card"><b>${esc(l.name)} <span class="pill">payTo ${esc(l.payTo)}</span></b><small>${esc(l.uaid)}</small><div>${l.endpoints.map((e) => `<span class="pill">${esc(e.method)} ${esc(e.path)} · ${e.accepts.map((a) => a.symbol).join('/')}</span>`).join('')}</div><small><a href="${esc(l.baseUrl)}/.well-known/agora402.json" target="_blank">manifest</a> · <a href="${esc(l.baseUrl)}/.well-known/agent.json" target="_blank">agent card</a></small></div>`).join('');
-}
-
-async function loadReceipts() {
-  const r = await (await fetch('/api/receipts')).json();
-  if (!r.topic) return;
-  $('rtopic').innerHTML = `<a href="${r.topicUrl}" target="_blank">topic ${r.topic}</a>`;
-  if (r.error) { $('receipts').textContent = r.error; return; }
-  if (!r.receipts.length) { $('receipts').textContent = 'no receipts yet'; return; }
-  $('receipts').innerHTML = `<table><tr><th>#</th><th>chain</th><th>tx</th><th>amount</th><th>payer</th><th>resource</th><th>usage</th></tr>` + r.receipts.map((x) => {
-    const rc = x.receipt; const hbar = rc.asset === '0.0.0' ? (Number(rc.amount) / 1e8).toFixed(8) + ' HBAR' : rc.amount + ' ' + rc.asset;
-    return `<tr><td>${x.sequenceNumber}</td><td class="${x.matchesChain ? 'ok' : 'bad'}">${x.matchesChain ? 'match' : 'MISMATCH'}</td><td><a target="_blank" href="https://hashscan.io/${cfg.network}/transaction/${encodeURIComponent(rc.transactionId)}">${esc(rc.transactionId)}</a></td><td>${hbar}</td><td>${esc(rc.payer)}</td><td>${esc(rc.resource)}</td><td>${esc(JSON.stringify(rc.usage))}</td></tr>`;
-  }).join('') + '</table>';
-}
-
-function addStage(e) {
-  const d = document.createElement('div');
-  d.className = 'stage ' + e.stage;
-  d.innerHTML = `<span class="t">${esc(e.at.slice(11, 23))}</span><span class="s">${esc(e.stage)}</span><span>${esc(e.message)}</span>`;
-  $('stages').appendChild(d);
-  d.scrollIntoView({ block: 'nearest' });
-}
-
-$('go').onclick = () => {
-  $('go').disabled = true;
-  $('stages').innerHTML = '';
-  $('result').innerHTML = '';
-  const q = new URLSearchParams({
-    task: $('task').value, prompt: $('prompt').value, maxTokens: $('maxTokens').value, counter: $('counter').value,
-    budget: $('budgetIn').value, maxCall: $('maxCall').value, seller: $('seller').value,
-  });
-  const es = new EventSource('/api/run?' + q);
-  es.addEventListener('stage', (ev) => addStage(JSON.parse(ev.data)));
-  es.addEventListener('result', (ev) => {
-    const r = JSON.parse(ev.data);
-    const text = r.body && r.body.choices ? r.body.choices[0].message.content : JSON.stringify(r.body, null, 2);
-    $('result').innerHTML = `<div class="result">${esc(text)}</div><div class="kv">
-      <div>seller</div><div>${esc(r.seller)}</div>
-      <div>list price</div><div>${esc(r.listPrice)}</div>
-      <div>negotiated</div><div>${r.quote ? esc(r.quote.amount) + ' (quote ' + esc(r.quote.quoteId) + ')' : 'no quote'}</div>
-      <div>paid</div><div>${esc(r.amount ?? 'nothing')}</div>
-      <div>transaction</div><div>${r.hashscanUrl ? `<a target="_blank" href="${r.hashscanUrl}">${esc(r.transaction)}</a>` : '-'}</div>
-      <div>mirror node</div><div>${r.onChain ? esc(r.onChain.result + ' at ' + r.onChain.consensus) : 'not yet visible'}</div>
-      <div>session</div><div>spent ${esc(r.spent)}, remaining ${esc(r.remaining)}</div></div>`;
-    $('budget').textContent = `spent ${r.spent}, remaining ${r.remaining}`;
-    setTimeout(loadReceipts, 4000);
-  });
-  es.addEventListener('error', (ev) => {
-    if (ev.data) addStage({ stage: 'failed', at: new Date().toISOString(), message: JSON.parse(ev.data).message });
-    es.close(); $('go').disabled = false;
-  });
-  es.onerror = () => { es.close(); $('go').disabled = false; };
+// ---------- mock backend for ?demo=1 (lets the page be previewed without Hedera) ----------
+const mock = {
+  config: { network: 'testnet', buyer: '0.0.10499301', buyerUrl: '#', registryTopic: '0.0.10499310', registryUrl: '#', receiptsTopic: '0.0.10499311', receiptsUrl: '#', sellerUrl: 'http://localhost:4402', spent: '0', remaining: '50000000' },
+  sellers: { listings: [{ name: 'agora-seller-1', version: '1.0.0', payTo: '0.0.10499254', baseUrl: 'http://localhost:4402', uaid: 'uaid:aid:21fsgXvwX7deUQ3TBeRbJzFRdqCsuQWrz1Buh97S7gLosBcM5mQ3YDvv9PSw2Wt4Sm;uid=agora-seller-1;registry=agora402;proto=a2a;nativeId=hedera:testnet:0.0.10499254', health: { llm: 'groq', facilitator: 'https://api.testnet.blocky402.com' }, endpoints: [
+    { id: 'infer', method: 'POST', path: '/v1/infer', accepts: [{ symbol: 'HBAR', pricing: { kind: 'per-token', base: '50000', inputPer1k: '20000', outputPer1k: '60000' } }, { symbol: 'TOLL', pricing: { kind: 'per-token', base: '5000', inputPer1k: '2000', outputPer1k: '6000' } }] },
+    { id: 'hbar-rate', method: 'GET', path: '/v1/rates/hbar', accepts: [{ symbol: 'HBAR', pricing: { kind: 'per-unit', unit: 'query', amountPerUnit: '10000' } }] }] }] },
+  receipts: { topic: '0.0.10499311', topicUrl: '#', receipts: [{ sequenceNumber: 3, matchesChain: true, receipt: { transactionId: '0.0.7162784@1789137819.483345080', payer: '0.0.10499301', payTo: '0.0.10499254', asset: '0.0.0', amount: '55944', resource: '/v1/infer', usage: { provider: 'groq', inputTokens: 41, outputTokens: 62 } } }] },
+  run: [
+    ['discovering', 'reading registry topic 0.0.10499310'], ['discovered', '1 seller(s) offer "infer" in HBAR'], ['quoting', 'asking agora-seller-1 for a quote, offering at most 0.00055944 HBAR'], ['quoted', 'agora-seller-1 quoted 0.00055944 HBAR (accepted our counter), valid 120s'], ['requesting', 'POST /v1/infer at agora-seller-1'], ['payment_required', 'seller asks 0.00055944 HBAR'], ['paying', 'signing transfer of 0.00055944 HBAR to 0.0.10499254'], ['paid', 'partially signed transaction attached, retrying request'], ['settled', 'facilitator settled 0.00055944 HBAR in tx 0.0.7162784@1789137819.483345080'], ['verifying', 'looking up on the mirror node'], ['verified', 'mirror node confirms SUCCESS: seller credited 0.00055944 HBAR'],
+  ],
+  result: { type: 'result', ok: true, status: 200, task: 'infer', answer: 'An agent pays with x402 because the price, the payment and the API call travel together in one HTTP exchange: the server answers 402 with an exact amount, the agent signs a Hedera transfer for that amount and retries, and the call is served the moment the facilitator settles it. No signup, no API key to leak, no subscription to reconcile: the agent spends only what each request costs, within limits it enforces before signing.', model: 'openai/gpt-oss-20b', usage: { prompt_tokens: 41, completion_tokens: 62, total_tokens: 103 }, seller: 'agora-seller-1', payTo: '0.0.10499254', listPrice: '62160', quote: { quoteId: 'q_f25eba5ca3b592bde83d57d4', amount: '55944', countered: true }, paid: '55944', transaction: '0.0.7162784@1789137819.483345080', hashscanUrl: '#', onChain: { result: 'SUCCESS', consensus: '1789137820.114932011', fee: 94733, transfers: [{ account: '0.0.10499301', amount: -55944 }, { account: '0.0.10499254', amount: 55944 }, { account: '0.0.7162784', amount: -94733 }] }, spent: '55944', remaining: '49944056', elapsedMs: 3820 },
 };
+async function api(path, init) {
+  if (!DEMO) { const r = await fetch(path, init); return r; }
+  const k = path.split('?')[0].split('/').pop();
+  return new Response(JSON.stringify(mock[k]), { status: 200 });
+}
 
+// ---------- header and config ----------
+async function loadConfig() {
+  cfg = await (await api('/api/config')).json();
+  $('netName').textContent = `hedera:${cfg.network}`;
+  $('buyerLink').textContent = cfg.buyer; $('buyerLink').href = cfg.buyerUrl || '#';
+  if (cfg.sellerUrl && !cfg.registryTopic && !$('seller').value) $('seller').value = cfg.sellerUrl;
+  $('regLink').innerHTML = cfg.registryTopic ? `<a href="${cfg.registryUrl}" target="_blank">topic ${esc(cfg.registryTopic)}</a>` : '<span class="dim">direct seller</span>';
+  $('rcLink').innerHTML = cfg.receiptsTopic ? `<a href="${cfg.receiptsUrl}" target="_blank">topic ${esc(cfg.receiptsTopic)}</a>` : '';
+  setBudget(cfg.spent, cfg.remaining);
+}
+function setBudget(spent, remaining) {
+  const s = tiny(spent || 0);
+  $('spent').textContent = hbar(s);
+  if (remaining !== null && remaining !== undefined) {
+    const r = tiny(remaining); const total = s + r; budgetTiny = total > 0n ? total : budgetTiny;
+    $('remaining').textContent = hbar(r);
+    $('bar').style.width = total > 0n ? `${Number((s * 10000n) / total) / 100}%` : '0%';
+  } else {
+    $('remaining').textContent = `${$('budget').value} HBAR`; $('bar').style.width = '0%';
+  }
+}
+
+// ---------- sellers ----------
+function priceLabel(p) {
+  if (p.kind === 'flat') return `${hbar(p.amount)} flat`;
+  if (p.kind === 'per-unit') return `${hbar(p.amountPerUnit)} / ${p.unit}`;
+  return `${hbar(p.base)} + ${hbar(p.inputPer1k)}/1k in + ${hbar(p.outputPer1k)}/1k out`;
+}
+async function loadSellers() {
+  const q = new URLSearchParams({ seller: $('seller').value, budget: $('budget').value, maxCall: $('maxCall').value });
+  let r; try { r = await (await api('/api/sellers?' + q)).json(); } catch (e) { $('sellers').innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
+  if (r.error) { $('sellers').innerHTML = `<div class="err">${esc(r.error)}</div>`; return; }
+  if (!r.listings?.length) { $('sellers').innerHTML = '<div class="empty">no sellers found in the registry</div>'; return; }
+  $('sellers').innerHTML = r.listings.map((l) => `
+    <div class="seller">
+      <div class="name">${esc(l.name)} <span class="dim">v${esc(l.version)}</span><span class="dot ${l.health ? '' : 'off'}" title="${l.health ? 'online' : 'health check failed'}"></span></div>
+      <div class="uaid">${esc(l.uaid)}</div>
+      <div class="chips" style="margin:0 0 8px"><span class="chip">payTo <b>${esc(l.payTo)}</b></span>${l.health ? `<span class="chip">llm <b>${esc(l.health.llm)}</b></span><span class="chip">facilitator <b>${esc(new URL(l.health.facilitator).host)}</b></span>` : ''}</div>
+      ${l.endpoints.map((e) => `<div class="ep"><span class="dim">${esc(e.method)}</span><span class="path">${esc(e.path)}</span><span class="pr" title="${e.accepts.map((a) => a.symbol + ': ' + priceLabel(a.pricing)).join('\n')}">${e.accepts.map((a) => a.symbol).join(' · ')} · ${esc(priceLabel(e.accepts[0].pricing)).split(' + ')[0]}${e.accepts[0].pricing.kind === 'per-token' ? ' + per token' : ''}</span></div>`).join('')}
+      <div class="hint" style="margin-top:8px"><a href="${esc(l.baseUrl)}/.well-known/agora402.json" target="_blank">manifest</a> · <a href="${esc(l.baseUrl)}/.well-known/agent.json" target="_blank">A2A agent card</a> · <a href="${esc(l.baseUrl)}/receipts" target="_blank">seller receipts</a></div>
+    </div>`).join('');
+}
+
+// ---------- receipts ----------
+async function loadReceipts() {
+  let r; try { r = await (await api('/api/receipts')).json(); } catch (e) { $('receipts').innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
+  if (!r.topic) return;
+  $('rcLink').innerHTML = `<a href="${r.topicUrl}" target="_blank">topic ${esc(r.topic)}</a>`;
+  if (r.error) { $('receipts').innerHTML = `<div class="err">${esc(r.error)}</div>`; return; }
+  if (!r.receipts.length) { $('receipts').innerHTML = '<div class="empty">no receipts yet. They appear a few seconds after a settlement.</div>'; return; }
+  $('receipts').innerHTML = r.receipts.map((x) => { const rc = x.receipt; const u = rc.usage || {}; return `
+    <div class="rc">
+      <div class="top"><span class="dim">#${x.sequenceNumber}</span><span class="amt">${rc.asset === '0.0.0' ? hbar(rc.amount) : esc(rc.amount + ' ' + rc.asset)}</span><span class="muted">${esc(rc.resource)}</span><span class="badge ${x.matchesChain ? 'ok' : 'bad'}">${x.matchesChain ? 'matches chain' : 'MISMATCH'}</span></div>
+      <div class="sub"><a target="_blank" href="https://hashscan.io/${cfg.network}/transaction/${encodeURIComponent(rc.transactionId)}">${esc(rc.transactionId)}</a></div>
+      <div class="sub">${esc(rc.payer)} → ${esc(rc.payTo)}${u.inputTokens !== undefined ? ` · ${u.inputTokens} in / ${u.outputTokens} out tokens · ${esc(u.provider || '')}` : ''}</div>
+    </div>`; }).join('');
+}
+
+// ---------- stepper ----------
+function renderSteps(state = {}) {
+  $('steps').innerHTML = STEPS.map((s, i) => { const st = state[s.id] || {}; return `
+    <div class="step ${st.status || ''}" id="step-${s.id}"><div class="n">${st.status === 'done' ? '✓' : st.status === 'failed' ? '!' : i + 1}</div><div class="t">${s.title}</div><div class="m">${esc(st.message || s.hint)}</div></div>`; }).join('');
+}
+function stepFor(stage) { return STEPS.find((s) => s.stages.includes(stage)); }
+const stepState = {};
+function onStage(e) {
+  const step = stepFor(e.stage);
+  const row = document.createElement('div'); row.className = e.stage;
+  row.innerHTML = `<span class="dim">${esc(e.at.slice(11, 23))}</span><span class="s">${esc(e.stage)}</span><span>${esc(e.message)}</span>`;
+  $('log').appendChild(row); $('log').scrollTop = 1e9;
+  if (e.stage === 'failed') { const active = Object.keys(stepState).find((k) => stepState[k].status === 'active') || 'settle'; stepState[active] = { status: 'failed', message: e.message }; renderSteps(stepState); return; }
+  if (!step) return;
+  if (e.stage === 'quote_rejected') { stepState.quote = { status: 'failed', message: e.message }; renderSteps(stepState); return; }
+  stepState[step.id] = { status: DONE.has(e.stage) ? 'done' : 'active', message: e.message };
+  renderSteps(stepState);
+}
+
+// ---------- rendering the result ----------
+function md(text) {
+  let h = esc(text);
+  h = h.replace(/```([\s\S]*?)```/g, (_, c) => `<pre>${c.trim()}</pre>`).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+  return h;
+}
+function renderResult(r) {
+  const secs = (r.elapsedMs / 1000).toFixed(1);
+  if (r.task === 'rate') {
+    const b = r.raw || {};
+    $('response').innerHTML = `<div class="answer"><span class="big">1 HBAR = $${Number(b.usdPerHbar).toFixed(5)}</span><br><span class="muted">${esc(b.source)} · rate file expires ${esc(b.expirationTime)}</span></div>`;
+    $('respMeta').innerHTML = `<span class="dim">${secs}s · ${esc(r.seller)}</span>`;
+  } else {
+    $('response').innerHTML = r.answer ? `<div class="answer">${md(r.answer)}</div>` : `<div class="err">no answer in response: ${esc(JSON.stringify(r.raw).slice(0, 300))}</div>`;
+    const u = r.usage || {};
+    $('response').insertAdjacentHTML('beforeend', `<div class="chips">${r.model ? `<span class="chip">model <b>${esc(r.model)}</b></span>` : ''}<span class="chip">tokens <b>${u.prompt_tokens ?? '?'} in / ${u.completion_tokens ?? '?'} out</b></span><span class="chip">seller <b>${esc(r.seller)}</b></span><span class="chip">round trip <b>${secs}s</b></span></div>`);
+    $('respMeta').innerHTML = `<span class="dim">metered per token</span>`;
+  }
+  const list = tiny(r.listPrice), paid = r.paid !== null ? tiny(r.paid) : null;
+  const saved = paid !== null && list > paid ? Number(((list - paid) * 10000n) / list) / 100 : 0;
+  const t = r.onChain?.transfers || [];
+  const feePayer = t.find((x) => x.account !== r.payTo && x.account !== cfg.buyer && x.amount < 0);
+  $('receipt').innerHTML = `
+    <div class="price">
+      <div><div class="l">list price</div><div class="v ${saved ? 'strike' : ''}">${hbar(list)}</div><div class="s">${saved ? '' : 'as published'}</div></div>
+      <div><div class="l">negotiated</div><div class="v">${r.quote ? hbar(r.quote.amount) : '—'}</div><div class="s">${r.quote ? (r.quote.countered ? `seller accepted our counter, −${saved}%` : 'at list price') : 'no quote'}</div></div>
+      <div><div class="l">paid</div><div class="v">${paid !== null ? hbar(paid) : 'nothing'}</div><div class="s">${paid !== null ? 'settled on Hedera' : 'call failed, not charged'}</div></div>
+    </div>
+    <div class="kv">
+      <div class="k">transaction</div><div class="v">${r.hashscanUrl ? `<a href="${r.hashscanUrl}" target="_blank" class="mono">${esc(r.transaction)}</a>` : '—'}</div>
+      <div class="k">mirror node</div><div class="v">${r.onChain ? `<span class="badge ok">${esc(r.onChain.result)}</span> <span class="muted">consensus ${esc(r.onChain.consensus)}</span>` : '<span class="badge warn">not visible yet</span> <span class="muted">indexing takes a few seconds, see HashScan</span>'}</div>
+      <div class="k">network fee</div><div class="v">${r.onChain ? `${hbar(r.onChain.fee)} paid by facilitator${feePayer ? ` <span class="mono dim">${esc(feePayer.account)}</span>` : ''}` : '—'}</div>
+      <div class="k">quote</div><div class="v mono">${r.quote ? esc(r.quote.quoteId) : '—'}</div>
+      <div class="k">seller identity</div><div class="v mono dim" style="font-size:11px">${esc(short(r.sellerUaid || '', 90))}</div>
+    </div>
+    ${paid !== null ? `<div class="transfer"><span>${esc(cfg.buyer)}</span><span class="arrow">──── ${hbar(paid)} ────▶</span><span>${esc(r.payTo)}</span><span class="dim" style="margin-left:auto">hedera:${esc(cfg.network)} · x402 exact</span></div>` : ''}`;
+  $('txLink').innerHTML = r.hashscanUrl ? `<a href="${r.hashscanUrl}" target="_blank">open on HashScan ↗</a>` : '';
+  history.unshift({ prompt: r.task === 'rate' ? 'HBAR/USD rate' : ($('prompt').value || '').trim(), paid: r.paid, url: r.hashscanUrl, ok: r.ok });
+  $('history').innerHTML = history.map((h) => `<div class="hist"><span class="p" title="${esc(h.prompt)}">${esc(h.prompt)}</span><span class="a">${h.paid !== null ? hbar(h.paid) : 'not charged'}</span>${h.url ? `<a href="${h.url}" target="_blank">↗</a>` : ''}</div>`).join('');
+  setBudget(r.spent, r.remaining);
+}
+
+// ---------- run ----------
+async function run() {
+  $('go').disabled = true; $('goLabel').textContent = 'working…';
+  for (const k of Object.keys(stepState)) delete stepState[k];
+  renderSteps(); $('log').innerHTML = ''; $('response').innerHTML = '<div class="empty">waiting for the seller…</div>'; $('receipt').innerHTML = ''; $('txLink').innerHTML = ''; $('respMeta').innerHTML = '';
+  const body = { task, prompt: $('prompt').value, maxTokens: $('maxTokens').value, counter: $('counter').value, budget: $('budget').value, maxCall: $('maxCall').value, seller: $('seller').value };
+  try {
+    if (DEMO) { for (const [stage, message] of mock.run) { onStage({ stage, message, at: new Date().toISOString() }); await new Promise((r) => setTimeout(r, 350)); } renderResult(mock.result); return; }
+    const res = await fetch('/api/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
+    while (true) {
+      const { value, done } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i; while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (!line) continue;
+        const msg = JSON.parse(line);
+        if (msg.type === 'stage') onStage(msg);
+        else if (msg.type === 'result') renderResult(msg);
+        else if (msg.type === 'error') { $('response').innerHTML = `<div class="err">${esc(msg.message)}</div>`; onStage({ stage: 'failed', message: msg.message, at: new Date().toISOString() }); if (msg.remaining !== null) setBudget(msg.spent, msg.remaining); }
+      }
+    }
+    setTimeout(loadReceipts, 5000);
+  } catch (e) {
+    $('response').innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  } finally {
+    $('go').disabled = false; $('goLabel').textContent = 'Discover, negotiate, pay';
+  }
+}
+
+// ---------- wiring ----------
+document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => { task = b.dataset.task; document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b)); $('inferFields').style.display = task === 'infer' ? '' : 'none'; $('rateFields').style.display = task === 'rate' ? '' : 'none'; });
+$('go').onclick = run;
+$('logToggle').onclick = () => { const on = $('log').classList.toggle('show'); $('logToggle').textContent = on ? 'hide raw events' : 'show raw events'; };
 $('seller').addEventListener('change', loadSellers);
+$('budget').addEventListener('change', () => setBudget(cfg.spent || 0, cfg.remaining));
+renderSteps();
 loadConfig().then(loadSellers).then(loadReceipts);
 </script>
 </body>
