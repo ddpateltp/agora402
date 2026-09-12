@@ -242,9 +242,9 @@
   </div>
   <div class="spacer"></div>
   <span class="pill"><span class="dot" id="netDot"></span> <b id="netName">hedera:testnet</b></span>
-  <span class="pill">buyer <b><a id="buyerLink" href="#" target="_blank" rel="noreferrer">0.0.—</a></b></span>
+  <span class="pill">buyer <b><a id="buyerLink" href="#" target="_blank" rel="noreferrer">0.0.&hellip;</a></b></span>
   <div class="pill budget" id="budgetPill">
-    <div class="row"><span>spent <b id="spent">0 HBAR</b></span><span>remaining <b id="remaining">—</b></span></div>
+    <div class="row"><span>spent <b id="spent">0 HBAR</b></span><span>remaining <b id="remaining">&hellip;</b></span></div>
     <div class="bar" id="budgetBar"><i id="barFill"></i></div>
   </div>
 </header>
@@ -323,7 +323,9 @@
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 /** Only http(s) links are ever written into an href that came from the network. */
-const safeUrl = (u) => { try { const x = new URL(String(u ?? ''), location.href); return x.protocol === 'http:' || x.protocol === 'https:' ? esc(x.href) : '#'; } catch { return '#'; } };
+const rawUrl = (u) => { try { const x = new URL(String(u ?? ''), location.href); return x.protocol === 'http:' || x.protocol === 'https:' ? x.href : '#'; } catch { return '#'; } };
+/** Same, escaped for interpolation into an HTML attribute. */
+const safeUrl = (u) => esc(rawUrl(u));
 const DEMO = new URLSearchParams(location.search).has('demo');
 
 // ---------- money: BigInt only, never a float ----------
@@ -424,6 +426,28 @@ const mock = {
     paid: '55944', transaction: MOCK_TX, hashscanUrl: `https://hashscan.io/testnet/transaction/${encodeURIComponent(MOCK_TX)}`,
     onChain: { result: 'SUCCESS', consensus: '1789137820.114932011', fee: 94733, transfers: [{ account: '0.0.10499301', amount: -55944 }, { account: '0.0.10499254', amount: 55944 }, { account: '0.0.7162784', amount: -94733 }] },
     spent: '55944', remaining: '49944056', elapsedMs: 3820 },
+  runRate: [
+    ['discovering', 'reading registry topic 0.0.10499310'],
+    ['discovered', '1 seller offers "hbar-rate" in HBAR'],
+    ['quoting', 'asking agora-seller-1 for a quote, offering at most 0.0001 HBAR'],
+    ['quoted', 'agora-seller-1 quoted 0.0001 HBAR at list price, valid 120s'],
+    ['requesting', 'GET /v1/rates/hbar at agora-seller-1'],
+    ['payment_required', 'seller asks 0.0001 HBAR'],
+    ['paying', 'signing transfer of 0.0001 HBAR to 0.0.10499254'],
+    ['paid', 'partially signed transaction attached, retrying request'],
+    ['settled', 'facilitator settled 0.0001 HBAR in tx 0.0.7162784@1789137611.902114553'],
+    ['verifying', 'looking up on the mirror node'],
+    ['verified', 'mirror node confirms SUCCESS: seller credited 0.0001 HBAR'],
+  ],
+  resultRate: { type: 'result', ok: true, status: 200, task: 'rate',
+    answer: null, raw: { usdPerHbar: 0.27412, source: 'hedera network rate file, mirror node', expirationTime: '2026-09-12T16:00:00Z' },
+    seller: 'agora-seller-1', sellerUaid: 'uaid:aid:21fsgXvwX7deUQ3TBeRbJzFRdqCsuQWrz1Buh97S7gLosBcM5mQ3YDvv9PSw2Wt4Sm;uid=agora-seller-1;registry=agora402;proto=a2a;nativeId=hedera:testnet:0.0.10499254',
+    payTo: '0.0.10499254', facilitator: 'https://api.testnet.blocky402.com', resource: '/v1/rates/hbar', endpointId: 'hbar-rate',
+    asset: '0.0.0', symbol: 'HBAR', decimals: 8,
+    listPrice: '10000', quote: { quoteId: 'q_0b93ad7715ce4482ffb61c5a', amount: '10000', expiresAt: 1789137731, countered: false },
+    paid: '10000', transaction: '0.0.7162784@1789137611.902114553', hashscanUrl: 'https://hashscan.io/testnet/transaction/0.0.7162784%401789137611.902114553',
+    onChain: { result: 'SUCCESS', consensus: '1789137612.774310244', fee: 91204, transfers: [{ account: '0.0.10499301', amount: -10000 }, { account: '0.0.10499254', amount: 10000 }, { account: '0.0.7162784', amount: -91204 }] },
+    spent: '10000', remaining: '49990000', elapsedMs: 1240 },
 };
 async function api(path, init) {
   if (!DEMO) return fetch(path, init);
@@ -443,7 +467,7 @@ async function loadConfig() {
   }
   $('netName').textContent = `hedera:${cfg.network}`;
   $('buyerLink').textContent = cfg.buyer;
-  $('buyerLink').href = safeUrl(cfg.buyerUrl);
+  $('buyerLink').href = rawUrl(cfg.buyerUrl);
   $('buyerLink').title = cfg.buyerUaid || cfg.buyer;
   if (cfg.sellerUrl && !cfg.registryTopic && !$('seller').value) $('seller').value = cfg.sellerUrl;
   $('regLink').innerHTML = cfg.registryTopic
@@ -556,7 +580,7 @@ function renderReceipts() {
     const rc = x.receipt || {}, u = rc.usage || {};
     const isHbar = rc.asset === '0.0.0';
     const amount = isHbar ? hbar(rc.amount) : `${esc(String(rc.amount))} ${esc(String(rc.asset))}`;
-    const tokens = u.inputTokens !== undefined ? `${esc(String(u.inputTokens))} in / ${esc(String(u.outputTokens ?? '?'))} out` : u.units !== undefined ? `${esc(String(u.units))} query` : '&mdash;';
+    const tokens = u.inputTokens !== undefined ? `${esc(String(u.inputTokens))} in / ${esc(String(u.outputTokens ?? '?'))} out` : u.units !== undefined ? `${esc(String(u.units))} query` : 'not metered';
     const fresh = rc.transactionId && rc.transactionId === awaitedTx;
     const problems = Array.isArray(x.problems) && x.problems.length ? x.problems.join('; ') : '';
     return `<tr class="${fresh ? 'fresh' : ''}">
@@ -750,7 +774,7 @@ function renderResult(r) {
       <div class="k">mirror node</div><div class="v">${r.onChain
         ? `<span class="badge ${r.onChain.result === 'SUCCESS' ? 'ok' : 'bad'}">${esc(r.onChain.result)}</span> <span class="muted">consensus ${esc(r.onChain.consensus)}</span>`
         : '<span class="badge warn">not visible yet</span> <span class="muted">indexing takes a few seconds; the HashScan link resolves once it lands</span>'}</div>
-      <div class="k">quote</div><div class="v"><span class="mono">${r.quote ? esc(r.quote.quoteId) : '&mdash;'}</span>${expires ? ` <span class="dim">signed by the seller, valid to ${esc(expires)}</span>` : ''}</div>
+      <div class="k">quote</div><div class="v"><span class="mono">${r.quote ? esc(r.quote.quoteId) : 'none, paid at the 402 price'}</span>${expires ? ` <span class="dim">signed by the seller, valid to ${esc(expires)}</span>` : ''}</div>
       <div class="k">seller identity</div><div class="v mono dim trunc" style="font-size:11px" title="${esc(r.sellerUaid || '')}">${esc(r.sellerUaid || '')}</div>
     </div>`;
   $('txLink').innerHTML = r.hashscanUrl ? `<a href="${safeUrl(r.hashscanUrl)}" target="_blank" rel="noreferrer">open on HashScan &#8599;</a>` : '';
@@ -799,12 +823,14 @@ async function run() {
   let lastTx = null;
   try {
     if (DEMO) {
-      for (const [stage, message] of mock.run) {
+      const script = task === 'rate' ? mock.runRate : mock.run;
+      const result = task === 'rate' ? mock.resultRate : mock.result;
+      for (const [stage, message] of script) {
         onStage({ stage, message, at: new Date().toISOString() });
         await new Promise((r) => setTimeout(r, 340));
       }
-      renderResult(mock.result);
-      lastTx = mock.result.transaction;
+      renderResult(result);
+      lastTx = result.transaction;
     } else {
       const res = await fetch('/api/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       if (!res.body) throw new Error(`the dashboard API answered ${res.status} with no stream`);
