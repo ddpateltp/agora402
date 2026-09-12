@@ -20,7 +20,7 @@ const Env = z.object({
   SELLER_NAME: z.string().min(1).default('agora-seller-1'),
   LLM_PROVIDER: z.enum(['groq', 'anthropic', 'mock']).default('mock'),
   GROQ_API_KEY: z.string().optional(),
-  GROQ_MODEL: z.string().default('llama-3.3-70b-versatile'),
+  GROQ_MODEL: z.string().default('openai/gpt-oss-20b'),
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL: z.string().default('claude-sonnet-4-5'),
 });

@@ -25,6 +25,21 @@ function arg(name: string): string | undefined {
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
 const flag = (name: string) => process.argv.includes(`--${name}`);
+const VALUE_FLAGS = new Set(['seller', 'max-tokens', 'counter', 'budget', 'max-call', 'topic', 'seller-account']);
+
+/** Positional words: everything that is not a flag or the value of a flag that takes one. */
+function positionals(args: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a.startsWith('--')) {
+      if (VALUE_FLAGS.has(a.slice(2))) i++;
+      continue;
+    }
+    out.push(a);
+  }
+  return out;
+}
 
 function printEvent(e: AgentEvent) {
   const t = e.at.slice(11, 23);
@@ -92,7 +107,8 @@ async function main() {
   }
 
   if (cmd === 'infer') {
-    const prompt = rest.find((a) => !a.startsWith('--') && a !== arg('seller') && a !== arg('max-tokens') && a !== arg('counter') && a !== arg('budget') && a !== arg('max-call'));
+    // npm strips the quotes around the prompt, so join every positional word.
+    const prompt = positionals(rest).join(' ').trim();
     if (!prompt) throw new Error('prompt required: agora infer "your question"');
     const counter = arg('counter') ? Math.round(Number(arg('counter')) * 100) : undefined;
     const r = await agent.infer(prompt, { sellerUrl, maxTokens: Number(arg('max-tokens') ?? 200), counterBps: counter });
