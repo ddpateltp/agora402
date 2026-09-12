@@ -75,15 +75,17 @@ Everything is TypeScript on Node 20+, npm workspaces, tested with Vitest. The te
 
 ## Setup
 
-Prerequisites: Node 20+, two Hedera testnet ECDSA accounts (seller and buyer) from [portal.hedera.com](https://portal.hedera.com) funded with testnet HBAR, and optionally a [Groq](https://console.groq.com) or Anthropic API key for real inference (`LLM_PROVIDER=mock` works without one).
+Prerequisites: Node 20+, one Hedera testnet ECDSA account from [portal.hedera.com](https://portal.hedera.com) (used as the seller; the buyer account is created from it by `npm run setup:buyer`), and optionally a [Groq](https://console.groq.com) or Anthropic API key for real inference (`LLM_PROVIDER=mock` works without one).
 
 ```bash
 git clone https://github.com/ddpateltp/agora402.git
 cd agora402
 npm install
-cp .env.example .env        # fill in SELLER_* and BUYER_* account ids and keys, LLM provider
+cp .env.example .env        # fill in SELLER_ACCOUNT_ID and SELLER_PRIVATE_KEY from the portal, LLM provider
 npm run build
 npm test                    # 27 tests, no network needed
+
+npm run setup:buyer         # creates the buyer account (100 HBAR from the seller), writes BUYER_* to .env
 
 npm run setup:topics        # creates REGISTRY_TOPIC_ID and RECEIPTS_TOPIC_ID, writes them to .env
 npm run setup:token         # optional: creates the TOLL HTS token, associates the buyer, funds it

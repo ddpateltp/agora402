@@ -19,7 +19,8 @@
     "setup:topics": "npm run topics --workspace=scripts",
     "setup:token": "npm run token --workspace=scripts",
     "setup:register": "npm run register --workspace=scripts",
-    "lint": "eslint packages scripts --ext .ts"
+    "lint": "eslint packages scripts --ext .ts",
+    "setup:buyer": "npm run buyer --workspace=scripts --"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
