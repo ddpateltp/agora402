@@ -1,0 +1,116 @@
+/*
+  Agora402 docs on the site's design system: off-white ground, 1px black borders, sharp corners,
+  DM Sans for prose, Space Mono for labels, orange only as punctuation. Light mode only.
+  Mintlify loads every .css file in this folder on every page.
+*/
+
+:root {
+  --a402-bg: #f8f8f6;
+  --a402-white: #ffffff;
+  --a402-black: #080808;
+  --a402-gray: #666666;
+  --a402-light-gray: #d9d9d6;
+  --a402-orange: #ff4d00;
+  --a402-mono: "Space Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Mintlify derives its grey scale from the primary colour; pin it to the neutral palette. */
+  --gray-50: 248 248 246;
+  --gray-100: 240 240 238;
+  --gray-200: 217 217 214;
+  --gray-300: 200 200 196;
+  --gray-400: 150 150 147;
+  --gray-500: 102 102 102;
+  --gray-600: 80 80 80;
+  --gray-700: 56 56 56;
+  --gray-800: 30 30 30;
+  --gray-900: 8 8 8;
+  --gray-950: 8 8 8;
+}
+
+/* Sharp everywhere. */
+*, *::before, *::after { border-radius: 0 !important; }
+
+/* Frame: header and sidebar carry black rules, like the site. */
+#navbar { border-bottom: 1px solid var(--a402-black); background: var(--a402-bg); }
+#navbar > div, #navbar-transition, #navbar-transition-maple { background: var(--a402-bg) !important; backdrop-filter: none !important; box-shadow: none !important; border-color: var(--a402-black) !important; }
+#sidebar { border-right: 1px solid var(--a402-black); background: var(--a402-bg); }
+footer, #footer { border-top: 1px solid var(--a402-black); }
+
+/* Search: a labelled box, not a pill. */
+#search-bar-entry, #search-bar-entry-mobile { border: 1px solid var(--a402-black); background: var(--a402-white); box-shadow: none !important; color: var(--a402-black); }
+#search-bar-entry:hover { border-color: var(--a402-orange); }
+
+/* Sidebar navigation: mono group labels, a black rule down the list, orange for the current page. */
+.sidebar-group-header .sidebar-title, .sidebar-group-header h3 { font-family: var(--a402-mono); font-size: 11px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.08em; color: var(--a402-black); }
+#navigation-items a { font-size: 13.5px; border-left-color: var(--a402-light-gray); }
+#navigation-items a:hover { color: var(--a402-orange); }
+#navigation-items a[aria-current="page"] { border-left: 2px solid var(--a402-orange); color: var(--a402-orange); }
+
+/* Navbar tabs: mono labels, black underline on the active tab. */
+.nav-tabs-item { font-family: var(--a402-mono); font-size: 12px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.08em; }
+.nav-tabs-item > div[class*="bg-primary"] { background: var(--a402-black) !important; height: 1px; }
+
+/* Page header: the eyebrow with its short rule, a heavy tight title. */
+.eyebrow { height: auto; font-family: var(--a402-mono); font-size: 12px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.08em; color: var(--a402-black) !important; }
+.eyebrow::after { content: ""; display: block; width: 32px; height: 1px; margin-top: 10px; background: var(--a402-black); }
+#page-title { font-weight: 700; letter-spacing: -0.03em; line-height: 1.02; }
+#header { padding-bottom: 20px; border-bottom: 1px solid var(--a402-black); }
+
+/* Prose headings end a thought with an orange square. */
+#content h2, #content h3 { font-weight: 700; letter-spacing: -0.02em; }
+#content h2[id]::after { content: ""; display: inline-block; width: 8px; height: 8px; margin-left: 10px; background: var(--a402-orange); vertical-align: middle; }
+#content .card h2::after, #content .callout h2::after { content: none; }
+
+/* Cards: white panels with a black frame, orange on hover. */
+.card { border: 1px solid var(--a402-black) !important; background: var(--a402-white) !important; box-shadow: none !important; }
+.card:hover { border-color: var(--a402-orange) !important; }
+.card h2 { font-weight: 700; letter-spacing: -0.01em; }
+[data-component-part="card-icon"], .card svg { color: var(--a402-black); fill: var(--a402-black); }
+
+/* Callouts: no tints. Black frame, a thick left edge, orange only for warnings. */
+.callout { border: 1px solid var(--a402-black) !important; border-left-width: 4px !important; background: var(--a402-white) !important; }
+.callout > div:first-child { color: var(--a402-black); }
+.callout > div:nth-child(2), .callout > div:nth-child(2) * { color: var(--a402-black) !important; }
+.callout > div:first-child svg { color: var(--a402-black); fill: var(--a402-black); }
+.callout[class*="amber"], .callout[class*="orange"], .callout[class*="red"], .callout[class*="yellow"] { border-color: var(--a402-orange) !important; }
+.callout[class*="amber"] > div:first-child svg, .callout[class*="orange"] > div:first-child svg, .callout[class*="red"] > div:first-child svg, .callout[class*="yellow"] > div:first-child svg { color: var(--a402-orange); fill: var(--a402-orange); }
+
+/* Steps: square markers, mono numbers. */
+[class*="step-indicator"] { background: var(--a402-black) !important; color: var(--a402-white) !important; font-family: var(--a402-mono); font-size: 11px; }
+.step-container > div:first-child { background: var(--a402-light-gray) !important; }
+
+/* Code: Space Mono, framed. */
+code, kbd, pre, .font-mono, [class*="font-mono"] { font-family: var(--a402-mono) !important; }
+:not(pre) > code { font-size: 0.85em; padding: 1px 5px; border: 1px solid var(--a402-light-gray); background: var(--a402-white); color: var(--a402-black); }
+.code-block { border: 1px solid var(--a402-black) !important; background: var(--a402-bg) !important; box-shadow: none !important; }
+.code-block > div:not(.code-block-background):not([class*="absolute"]) { border-bottom: 1px solid var(--a402-light-gray); background: var(--a402-bg) !important; }
+.code-block-background { border: 0 !important; background: var(--a402-bg) !important; box-shadow: none !important; }
+pre.shiki { background: transparent !important; }
+
+/* Tables: mono uppercase heads. */
+#content th { font-family: var(--a402-mono); font-size: 11px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.06em; color: var(--a402-gray); border-bottom: 1px solid var(--a402-black); }
+#content td { border-bottom: 1px solid var(--a402-light-gray); }
+
+/* Pagination and buttons: sharp, framed. */
+#pagination { background: transparent !important; padding: 0; gap: 12px; }
+#page-context-menu button, #page-context-menu-button, #topbar-cta-button { border: 1px solid var(--a402-black) !important; background: var(--a402-white) !important; box-shadow: none !important; }
+#page-context-menu button:hover, #page-context-menu-button:hover, #topbar-cta-button:hover { border-color: var(--a402-orange) !important; }
+
+/* Table of contents: a mono label, orange for the current section. */
+#table-of-contents-content .toc a { font-size: 13px; }
+
+/* Text selection, links. */
+::selection { background: var(--a402-black); color: var(--a402-white); }
+
+/* API reference: method marks and buttons on the palette. GET outlined, POST filled black. */
+.method-pill, .method-nav-pill span { font-family: var(--a402-mono) !important; font-weight: 400 !important; letter-spacing: 0.04em; border: 1px solid var(--a402-black); background: var(--a402-white) !important; color: var(--a402-black) !important; }
+.method-pill[class*="blue"], .method-nav-pill span[class*="3064E3"] { background: var(--a402-black) !important; color: var(--a402-white) !important; }
+.tryit-button { background: var(--a402-black) !important; color: var(--a402-white) !important; font-family: var(--a402-mono); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+.tryit-button:hover { background: var(--a402-orange) !important; opacity: 1 !important; }
+[class*="text-red-600"][class*="bg-red-100"] { background: transparent !important; color: var(--a402-orange) !important; border: 1px solid var(--a402-orange); font-family: var(--a402-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
+[class*="bg-stone-100"] { font-family: var(--a402-mono); background: var(--a402-bg) !important; color: var(--a402-gray) !important; }
+
+/* Pagination: two framed cells. */
+#pagination a { border: 1px solid var(--a402-black); background: var(--a402-white); }
+#pagination a:hover { border-color: var(--a402-orange); }
+#pagination a > div { border: 0 !important; box-shadow: none !important; }

@@ -15,7 +15,8 @@
   },
   "favicon": "/logo/favicon.svg",
   "appearance": {
-    "default": "light"
+    "default": "light",
+    "strict": true
   },
   "fonts": {
     "family": "DM Sans",
