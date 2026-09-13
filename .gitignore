@@ -18,5 +18,8 @@ dist/
 .agora/
 coverage/
 
-# external reference repos cloned for local testing only, never committed
+# local reference material and internal working notes, never committed
 external/
+tasks/
+.claude/
+docs/INTEGRATION_PLAN.md
