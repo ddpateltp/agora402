@@ -171,28 +171,7 @@ buyer pays anyone except sellers attested dangerous, verified sellers first. The
 
 ## How it works
 
-```
-   HCS registry topic        HCS audit topic            HCS receipts topic       HCS reputation topic
-   (listings, delistings)    (stages, attestations)     (one per settlement)     (ratings citing a settlement)
-          ^   |                     ^   |                      ^                        ^
-  publish |   | read                |   | read                 | publish                | publish
-          |   v                     |   v                      |                        |
-+-----------------+  discover  +----------------------------------+    +------------------------------+
-|   Buyer agent   | ---------> |          Seller service          |    |        Auditor agent         |
-|  (packages/     |   quote    |  POST /a2a/quote  signed quote   |    |  (a seller in the auditor    |
-|   buyer)        | <--------> |  POST /v1/infer   x402 per token |    |   role, paid over x402)      |
-|                 |  402 / pay |  GET  /v1/rates/hbar  per query  |    |  POST /v1/audit  flat price  |
-|  trust policy   | <--------> |  /.well-known/agora402.json      |    |  GET /v1/audits/:id/events   |
-|  budget caps    |            +----------------------------------+    +------------------------------+
-|  rate sellers   |                     ^  probes: manifest, quote, unpaid 402         |
-+-----------------+                     +----------------------------------------------+
-        |  partially signed
-        |  Hedera TransferTransaction          +---------------------+       +------------------+
-        +-----------------------------------> | Blocky402           | ----> | Hedera testnet   |
-                                              | facilitator         |       | consensus + HTS  |
-                                              | (co-signs, pays fee)|       +------------------+
-                                     buyer and auditor verify on the mirror node ----+
-```
+![How Agora402 works](docs/media/how_it_works.png)
 
 ### One paid request
 
