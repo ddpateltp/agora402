@@ -52,8 +52,8 @@ EVALUATE, never to secrets, and visible everywhere the harness reports.
   matcher, which built a `RegExp` from a pattern read out of
   `.harness/waivers.yaml`. It became a two-cursor wildcard walk with identical
   semantics and a test against a wildcard-between-every-character pattern.
-- **The harness fork shows PR branches only.** Demos, prompts and planning
-  live here, in the project repository, not on the fork.
+- **The harness fork shows PR branches only.** The demos and the planning
+  record live here, in the project repository, not on the fork.
 
 ## Test counts per branch
 

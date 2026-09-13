@@ -117,8 +117,7 @@ green gate is a real paid request end to end produced by the harness, not read o
 
 **Evidence and record.** [`hedera_harness_contribution/`](hedera_harness_contribution/README.md) holds a
 before-and-after demo per PR (each runs the harness CLI from `upstream/dev` and from the PR branch against the same
-project), the prompts given to Claude Code for this work, verbatim, and the planning record with the decisions
-taken along the way.
+project) and the planning record with the decisions taken along the way.
 
 ## Try it in five minutes
 
@@ -276,7 +275,7 @@ packages/web        the site: Vue 3 and Vite; Marketplace, Buy, Audit, Trail and
 scripts             setup: topics, accounts, the TOLL token, listing publication, balances
 docs                media
 hedera_harness_contribution
-                    the five upstream harness PRs: before-and-after demos, prompts, planning record
+                    the five upstream harness PRs: before-and-after demos, planning record
 ```
 
 TypeScript on Node 20+, npm workspaces, Vitest. The tests run the real x402 client and server code paths against a
@@ -296,8 +295,7 @@ fake facilitator and a stubbed mirror node, so `npm test` needs no network. CI b
 AI tools used: Claude (Claude Code and Cowork) for code drafting, test scaffolding, PR descriptions and submission
 text, for Agora402 and for the five Hedera Harness pull requests above. All design decisions, the choice of what to
 build and what to fix, verification against the live harness and Hedera testnet, and the final review were done by
-Divyesh Patel. Prompts and planning artefacts for the harness work are in
-[`hedera_harness_contribution/prompts`](hedera_harness_contribution/prompts/README.md) and
+Divyesh Patel. The planning record for the harness work, including the decisions behind each pull request, is in
 [`hedera_harness_contribution/planning`](hedera_harness_contribution/planning/).
 
 ## Licence

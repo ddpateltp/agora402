@@ -13,6 +13,6 @@ All times CEST. Submission deadline: Sunday 13 September 2026, 18:00 CEST (12:00
 | 13 September, afternoon | Survey of the 29 competing PRs; #79 (accepted-finding waivers) designed, built with 13 offline tests and opened. |
 | 13 September, afternoon | Commits on #69 and #70 rewritten to carry only the author, trees unchanged; #68 re-stacked. |
 | 13 September, afternoon | Wiz SAST reports two medium findings on #79. Cause: a `RegExp` built from file input. Replaced with a wildcard walk; rescan clean. |
-| 13 September, afternoon | Working documents removed from the public harness fork; demos, prompts and planning moved to this folder. |
+| 13 September, afternoon | Working documents removed from the public harness fork; the demos and the planning record moved to this folder. |
 | by 16:30 | Video recorded (real narration, four minutes) and uploaded. |
 | by 17:30 | ETHGlobal form submitted with Hedera selected as the partner prize. |

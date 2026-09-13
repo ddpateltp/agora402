@@ -23,7 +23,6 @@ Agora402 was generated and validated with the [Hedera Harness](https://github.co
 | Path | What |
 | --- | --- |
 | `demo/` | Reproducible before-and-after demos, one directory per PR. Each runs the harness CLI from `upstream/dev` and from the PR branch against the same project. |
-| `prompts/` | The prompts given to Claude Code, verbatim, with what came out of each. |
 | `planning/` | The timeline and the plan the PRs were built against, including the decisions taken along the way. |
 
 ## Running the demos
