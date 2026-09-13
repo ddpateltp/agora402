@@ -120,18 +120,19 @@ async function resetAll() {
 }
 const transfers = computed(() => buy.result.value?.onChain?.transfers.filter((t) => t.amount !== 0) ?? []);
 const roleOf = (account: string) => (account === buy.result.value?.payTo ? 'seller' : account === session.config?.buyer ? 'buyer' : account === '0.0.802' || account === '0.0.98' ? 'network' : 'facilitator, fee payer');
+const two = (n: number) => String(n).padStart(2, '0');
 </script>
 
 <template>
   <div class="demo">
     <aside class="steps">
-      <router-link to="/" class="brand"><img src="/logo.png" alt="" width="22" height="22" /> Agora402</router-link>
+      <router-link to="/" class="brand"><span class="mark" aria-hidden="true"></span> Agora402</router-link>
       <ol>
         <li v-for="(s, i) in STEPS" :key="s.id" :class="{ on: i === idx, done: i < idx }" @click="idx = i">
-          <span class="n mono">{{ i }}</span>{{ s.title }}
+          <span class="n">{{ two(i) }}</span>{{ s.title }}
         </li>
       </ol>
-      <div class="session mono" v-if="session.config">
+      <div class="session" v-if="session.config">
         <div><span class="dim">buyer</span> {{ session.config.buyer }}</div>
         <div><span class="dim">spent</span> {{ fmt(session.spent, 8, 'HBAR', 6) }}</div>
       </div>
@@ -140,8 +141,8 @@ const roleOf = (account: string) => (account === buy.result.value?.payTo ? 'sell
 
     <section class="stage">
       <header>
-        <span class="counter mono">{{ idx }} / {{ STEPS.length - 1 }}</span>
-        <h1>{{ step.title }}</h1>
+        <p class="eyebrow">Step {{ two(idx) }} / {{ two(STEPS.length - 1) }}</p>
+        <h1>{{ step.title }}<span class="sq" aria-hidden="true"></span></h1>
       </header>
 
       <div class="body">
@@ -186,8 +187,8 @@ const roleOf = (account: string) => (account === buy.result.value?.payTo ? 'sell
         <!-- 3 pay -->
         <div v-else-if="step.id === 'pay'" class="slide">
           <div class="controls">
-            <div class="prefilled"><span class="dim">prompt</span><p>{{ SHORT_PROMPT }}</p></div>
-            <div class="facts mono"><span>offer 90% of list</span><span>budget 0.5 HBAR</span><span>max per call 0.05 HBAR</span><span>policy: verified sellers first</span></div>
+            <div class="prefilled"><span class="lbl">prompt</span><p>{{ SHORT_PROMPT }}</p></div>
+            <div class="facts"><span>offer 90% of list</span><span>budget 0.5 HBAR</span><span>max per call 0.05 HBAR</span><span>policy: verified sellers first</span></div>
             <button class="btn primary" @click="runPay" :disabled="buy.running.value">{{ buy.running.value ? 'Running…' : 'Discover, negotiate, pay' }}</button>
           </div>
           <div class="rails one"><StageRail :steps="BUY_STEPS" :state="buy.rail" /></div>
@@ -205,7 +206,7 @@ const roleOf = (account: string) => (account === buy.result.value?.payTo ? 'sell
               <h2>Settlement <span class="right"><HashLink kind="transaction" :id="buy.result.value.transaction" /></span></h2>
               <div class="ledger">
                 <div v-for="t in transfers" :key="t.account + t.amount" class="ledger-row">
-                  <HashLink kind="account" :id="t.account" /><span class="dim">{{ roleOf(t.account) }}</span><span class="mono amt" :class="t.amount < 0 ? 'neg' : 'pos'">{{ t.amount > 0 ? '+' : '' }}{{ fmt(t.amount) }}</span>
+                  <HashLink kind="account" :id="t.account" /><span class="lbl">{{ roleOf(t.account) }}</span><span class="mono amt" :class="t.amount < 0 ? 'neg' : 'pos'">{{ t.amount > 0 ? '+' : '' }}{{ fmt(t.amount) }}</span>
                 </div>
               </div>
               <p class="dim foot" v-if="buy.result.value.onChain">{{ buy.result.value.onChain.result }} at consensus {{ buy.result.value.onChain.consensus }}. The network fee was paid by the facilitator, not by the buyer.</p>
@@ -226,7 +227,7 @@ const roleOf = (account: string) => (account === buy.result.value?.payTo ? 'sell
         <!-- 5 meter -->
         <div v-else-if="step.id === 'meter'" class="slide">
           <div class="controls">
-            <div class="prefilled"><span class="dim">a much longer prompt, no counter offer</span><p class="clamp">{{ LONG_PROMPT }}</p></div>
+            <div class="prefilled"><span class="lbl">a much longer prompt, no counter offer</span><p class="clamp">{{ LONG_PROMPT }}</p></div>
             <button class="btn primary" @click="runMeter" :disabled="meter.running.value">{{ meter.running.value ? 'Running…' : 'Pay for the longer request' }}</button>
           </div>
           <div class="rails one"><StageRail :steps="BUY_STEPS" :state="meter.rail" compact /></div>
@@ -257,7 +258,7 @@ const roleOf = (account: string) => (account === buy.result.value?.payTo ? 'sell
             <button class="btn primary small" @click="sendRating" :disabled="rating.busy || rating.score < 1 || !!rating.done">{{ rating.busy ? 'Recording…' : 'Record the rating' }}</button>
             <span class="ok-text" v-if="rating.done">{{ rating.done }}</span>
             <span class="error" v-if="rating.error">{{ rating.error }}</span>
-            <div class="after" v-if="subject"><span class="dim">the card now reads</span><ListingCard :listing="subject" compact /></div>
+            <div class="after" v-if="subject"><span class="lbl">the card now reads</span><ListingCard :listing="subject" compact /></div>
           </div>
         </div>
 
@@ -273,7 +274,7 @@ const roleOf = (account: string) => (account === buy.result.value?.payTo ? 'sell
 
         <!-- 8 close -->
         <div v-else class="slide">
-          <p class="big">github.com/ddpateltp/agora402</p>
+          <p class="big mono-big">github.com/ddpateltp/agora402</p>
           <ul class="bullets">
             <li>Tests run the real x402 client and server paths offline, with a fake facilitator and a stubbed mirror node.</li>
             <li>Next: escrow with auditor bonds, re-audit on every listing change, World ID for one human per agent.</li>
@@ -283,10 +284,10 @@ const roleOf = (account: string) => (account === buy.result.value?.payTo ? 'sell
       </div>
 
       <footer>
-        <p class="say"><span class="dim">Say</span> {{ step.say }}</p>
+        <p class="say"><span class="lbl">Say</span> {{ step.say }}</p>
         <div class="nav">
           <button class="btn" @click="back" :disabled="idx === 0">Back</button>
-          <button class="btn primary" @click="next" :disabled="idx === STEPS.length - 1">Next</button>
+          <button class="btn primary" @click="next" :disabled="idx === STEPS.length - 1">Next <span aria-hidden="true">→</span></button>
         </div>
       </footer>
     </section>
@@ -294,59 +295,75 @@ const roleOf = (account: string) => (account === buy.result.value?.payTo ? 'sell
 </template>
 
 <style scoped>
-.demo { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
-.steps { border-right: 1px solid var(--hair); padding: 18px 16px; display: flex; flex-direction: column; gap: 18px; background: rgba(255, 255, 255, 0.5); }
-.brand { display: flex; align-items: center; gap: 8px; color: var(--ink); font-weight: 600; }
-.steps ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.steps li { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 8px; color: var(--ink-2); cursor: pointer; font-size: 13px; }
-.steps li.on { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
-.steps li.done { color: var(--ink-3); }
-.n { width: 18px; text-align: right; font-size: 11.5px; }
-.session { margin-top: auto; font-size: 11.5px; display: flex; flex-direction: column; gap: 4px; }
+.demo { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+.steps { border-right: 1px solid var(--color-black); padding: 20px 18px; display: flex; flex-direction: column; gap: 22px; background: var(--color-bg); }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--color-black); font-size: 17px; font-weight: 700; letter-spacing: -0.02em; }
+.brand:hover { color: var(--color-black); }
+.mark { position: relative; width: 14px; height: 14px; background: var(--color-black); }
+.mark::after { content: ''; position: absolute; top: 2px; right: 2px; width: 4px; height: 4px; background: var(--color-orange); }
+.steps ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border-top: 1px solid var(--color-black); }
+.steps li { display: flex; align-items: center; gap: 12px; padding: 9px 8px; border-bottom: 1px solid var(--color-light-gray); color: var(--color-black); cursor: pointer; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+.steps li:hover { color: var(--color-orange); }
+.steps li.on { background: var(--color-black); color: var(--color-white); border-color: var(--color-black); }
+.steps li.on .n { color: var(--color-orange); }
+.steps li.done { color: var(--color-gray); }
+.n { width: 18px; color: var(--color-orange); }
+.session { margin-top: auto; display: flex; flex-direction: column; gap: 6px; font-family: var(--font-mono); font-size: 11px; }
 .reset { align-self: flex-start; }
-.stage { display: grid; grid-template-rows: auto 1fr auto; min-height: 100vh; padding: 26px 40px 20px; max-width: 1180px; }
-header { display: flex; align-items: baseline; gap: 16px; margin-bottom: 18px; }
-header h1 { font-size: 28px; letter-spacing: -0.02em; }
-.counter { color: var(--ink-3); }
+.stage { display: grid; grid-template-rows: auto 1fr auto; min-height: 100vh; padding: 28px 44px 22px; max-width: 1180px; }
+header { display: flex; flex-direction: column; gap: 14px; margin-bottom: 22px; padding-bottom: 18px; border-bottom: 1px solid var(--color-black); }
+header h1 { font-size: 40px; line-height: 0.98; letter-spacing: -0.035em; }
 .body { min-height: 0; }
 .slide { display: flex; flex-direction: column; gap: 16px; }
-.big { font-size: 26px; line-height: 1.3; letter-spacing: -0.015em; max-width: 30ch; }
-.big.accent { color: var(--accent); }
-.lead { font-size: 15px; color: var(--ink-2); max-width: 70ch; }
-.bullets { margin: 0; padding-left: 22px; font-size: 20px; line-height: 1.5; display: flex; flex-direction: column; gap: 8px; max-width: 46ch; }
+.lbl { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-gray); }
+.big { font-size: 30px; font-weight: 700; line-height: 1.15; letter-spacing: -0.025em; max-width: 30ch; }
+.big.accent { max-width: 38ch; }
+.big.accent::after { content: ''; display: inline-block; width: 10px; height: 10px; margin-left: 8px; background: var(--color-orange); vertical-align: middle; }
+.mono-big { font-family: var(--font-mono); font-weight: 700; font-size: 24px; letter-spacing: -0.01em; }
+.lead { font-size: 15px; color: var(--color-gray); max-width: 70ch; }
+.bullets { margin: 0; padding-left: 22px; list-style: square; font-size: 20px; line-height: 1.5; display: flex; flex-direction: column; gap: 8px; max-width: 46ch; }
+.bullets li::marker { color: var(--color-orange); }
 .bullets.four { font-size: 17px; max-width: 60ch; }
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
-.controls { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 14px 16px; background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-card); box-shadow: var(--shadow); }
+.controls { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 14px 16px; background: var(--color-white); border: 1px solid var(--color-black); }
 .who { display: flex; align-items: center; gap: 10px; font-size: 13px; }
-.chk { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); }
+.chk { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-gray); }
 .controls .btn.primary { margin-left: auto; }
 .prefilled { flex: 1 1 340px; font-size: 13px; }
-.prefilled p { margin-top: 2px; }
-.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; color: var(--ink-2); }
-.facts { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--ink-2); }
-.rails { display: grid; grid-template-columns: 1fr 1.5fr; gap: 28px; padding: 16px 20px; background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-card); box-shadow: var(--shadow); }
+.prefilled p { margin-top: 4px; }
+.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; color: var(--color-gray); }
+.facts { display: flex; gap: 14px; flex-wrap: wrap; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-gray); }
+.rails { display: grid; grid-template-columns: 1fr 1.5fr; gap: 28px; padding: 16px 20px; background: var(--color-white); border: 1px solid var(--color-black); }
 .rails.one { grid-template-columns: 1fr; }
-.rails h3 { margin-bottom: 10px; }
+.rails h3 { margin-bottom: 12px; }
 .answer p { font-size: 15px; line-height: 1.55; margin-top: 8px; max-width: 80ch; }
 .proof { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; }
-.ledger { display: flex; flex-direction: column; gap: 6px; }
-.ledger-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: center; padding: 8px 10px; background: var(--inset); border-radius: 8px; font-size: 13px; }
-.amt { font-weight: 500; } .neg { color: var(--bad); } .pos { color: var(--ok); }
-.foot { margin-top: 10px; font-size: 12.5px; }
-dl { display: grid; grid-template-columns: 110px 1fr; gap: 8px 12px; margin: 0; font-size: 13px; }
-dt { color: var(--ink-2); } dd { margin: 0; display: flex; align-items: center; gap: 8px; }
+.ledger { display: flex; flex-direction: column; }
+.ledger-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--color-light-gray); font-size: 13px; }
+.amt { font-weight: 700; }
+.neg { color: var(--color-orange); }
+.pos { color: var(--color-black); }
+.foot { margin-top: 12px; font-size: 12.5px; }
+dl { display: grid; grid-template-columns: 110px 1fr; gap: 10px 12px; margin: 0; font-size: 13px; }
+dt { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-gray); padding-top: 2px; }
+dd { margin: 0; display: flex; align-items: center; gap: 8px; }
 .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 640px; }
-.cmp { display: flex; flex-direction: column; gap: 6px; }
-.big-num { font-size: 26px; }
+.cmp { display: flex; flex-direction: column; gap: 8px; }
+.big-num { font-size: 26px; font-weight: 700; }
 .rate { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 13px; }
-.stars { display: inline-flex; gap: 2px; }
-.stars button { border: 0; background: none; font-size: 24px; color: var(--hair); padding: 0 2px; line-height: 1; }
-.stars button.on { color: var(--warn); }
-.ok-text { color: var(--ok); }
+.stars button { font-size: 24px; }
 .after { flex-basis: 100%; display: grid; grid-template-columns: auto minmax(280px, 380px); gap: 12px; align-items: start; margin-top: 6px; }
-footer { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding-top: 18px; margin-top: 18px; border-top: 1px solid var(--hair); }
-.say { font-size: 14px; color: var(--ink-2); max-width: 90ch; }
-.say .dim { margin-right: 8px; }
+footer { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding-top: 18px; margin-top: 18px; border-top: 1px solid var(--color-black); }
+.say { font-size: 15px; line-height: 1.5; max-width: 90ch; }
+.say .lbl { margin-right: 10px; }
 .nav { display: flex; gap: 8px; flex: none; }
-@media (max-width: 900px) { .demo { grid-template-columns: 1fr; } .steps { flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--hair); } .steps ol { flex-direction: row; flex-wrap: wrap; } .session { display: none; } .rails, .proof, .compare { grid-template-columns: 1fr; } .stage { padding: 18px; min-height: auto; } }
+@media (max-width: 900px) {
+  .demo { grid-template-columns: 1fr; }
+  .steps { flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--color-black); }
+  .steps ol { flex-direction: row; flex-wrap: wrap; border-top: 0; }
+  .steps li { border-bottom: 0; }
+  .session { display: none; }
+  .rails, .proof, .compare { grid-template-columns: 1fr; }
+  .stage { padding: 18px; min-height: auto; }
+}
 </style>

@@ -163,7 +163,8 @@ buyer pays anyone except sellers attested dangerous, verified sellers first. The
 
 | Route | What it shows |
 |---|---|
-| `/` | Every listing with its trust seal, pricing, rating and HashScan links. Filters for verified only and minimum trust. |
+| `/` | The landing page: what the marketplace does, how one request flows, what runs on Hedera. |
+| `/market` | Every listing with its trust seal, pricing, rating and HashScan links. Filters for verified only and minimum trust. |
 | `/buy` | One paid request: prompt, counter offer, budgets, trust policy, the live five-stage rail, the response, the receipt with the on-chain transfers, a rating box, and the receipts table with the chain match column. |
 | `/audit` | Order an audit: pick the subject and the auditor, watch the payment rail and the four-stage pipeline live, read the attestation and every finding. |
 | `/trail` | Replay of the audit, receipts and reputation topics straight from the mirror node. |

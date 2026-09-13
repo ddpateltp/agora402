@@ -15,7 +15,7 @@ const trust = () => ({ ...props.attestation, current: true, consensusTimestamp: 
     <div class="head">
       <TrustSeal :trust="trust()" :size="72" />
       <div class="text">
-        <div class="verdict">{{ attestation.verdict === 'safe' ? 'Safe to buy from' : 'Do not buy from this seller' }}</div>
+        <div class="verdict">{{ attestation.verdict === 'safe' ? 'Safe to buy from' : 'Do not buy from this seller' }}<span class="sq" aria-hidden="true"></span></div>
         <p class="summary">{{ attestation.summary }}</p>
         <div class="facts">
           <span class="dim">audit <span class="mono">{{ attestation.auditId }}</span></span>
@@ -35,22 +35,24 @@ const trust = () => ({ ...props.attestation, current: true, consensusTimestamp: 
         <FindingList :findings="attestation.findings" empty-text="Nothing found: the live manifest matches the listing, quotes are signed by the paid account, and every 402 honours the published price." />
       </div>
     </div>
-    <button class="toggle" @click="raw = !raw">{{ raw ? 'hide' : 'show' }} the attestation as written to HCS</button>
+    <button class="toggle self" @click="raw = !raw">{{ raw ? 'hide' : 'show' }} the attestation as written to HCS</button>
     <pre class="raw" v-if="raw">{{ JSON.stringify(attestation, null, 2) }}</pre>
   </div>
 </template>
 
 <style scoped>
-.att { display: flex; flex-direction: column; gap: 16px; }
-.head { display: flex; gap: 18px; align-items: flex-start; }
-.verdict { font-size: 17px; font-weight: 600; }
-.dangerous .verdict { color: var(--bad); }
-.safe .verdict { color: var(--ok); }
-.summary { margin-top: 4px; color: var(--ink-2); max-width: 70ch; }
-.facts { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; font-size: 12.5px; }
-.cols { display: grid; grid-template-columns: 1fr 1.4fr; gap: 20px; }
-.caps { margin: 6px 0 0; padding-left: 18px; color: var(--ink-2); font-size: 13px; }
-.caps li { margin-bottom: 3px; }
-h3 + * { margin-top: 6px; }
+.att { display: flex; flex-direction: column; gap: 18px; }
+.head { display: flex; gap: 20px; align-items: flex-start; }
+.verdict { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
+.dangerous .verdict { color: var(--color-orange); }
+.dangerous .verdict .sq { background: var(--color-black); }
+.summary { margin-top: 6px; color: var(--color-gray); max-width: 70ch; line-height: 1.5; }
+.facts { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 12.5px; }
+.cols { display: grid; grid-template-columns: 1fr 1.4fr; gap: 24px; padding-top: 16px; border-top: 1px solid var(--color-light-gray); }
+.caps { margin: 8px 0 0; padding-left: 16px; list-style: square; color: var(--color-gray); font-size: 13px; }
+.caps li { margin-bottom: 4px; }
+.caps li::marker { color: var(--color-orange); }
+h3 + * { margin-top: 8px; }
+.self { align-self: flex-start; }
 @media (max-width: 760px) { .cols { grid-template-columns: 1fr; } .head { flex-direction: column; } }
 </style>

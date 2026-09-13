@@ -13,6 +13,5 @@ defineProps<{ reputation: ReputationSummary | null }>();
 
 <style scoped>
 .rating { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
-.stars i { font-style: normal; color: var(--hair); font-size: 12px; }
-.stars i.on { color: var(--warn); }
+.stars i { font-size: 12px; }
 </style>

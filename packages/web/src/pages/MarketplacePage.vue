@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import ListingCard from '../components/ListingCard.vue';
 import HashLink from '../components/HashLink.vue';
+import Eyebrow from '../components/Eyebrow.vue';
 import { session, loadSellers } from '../lib/session';
 import type { Listing } from '../lib/types';
 
@@ -30,10 +31,11 @@ const audit = (l: Listing) => router.push({ path: '/audit', query: { subject: l.
 </script>
 
 <template>
-  <section class="head">
+  <section class="page-head">
     <div>
-      <h1>Sellers on the registry</h1>
-      <p class="muted">
+      <Eyebrow>01. Marketplace</Eyebrow>
+      <h1>Sellers on the registry<span class="sq" aria-hidden="true"></span></h1>
+      <p class="lede">
         Every listing is an HCS message paid for by the account it names.
         <template v-if="session.config?.registryTopic">Topic <HashLink kind="topic" :id="session.config.registryTopic" />.</template>
         <template v-if="session.config?.auditTopic"> Attestations come from topic <HashLink kind="topic" :id="session.config.auditTopic" />.</template>
@@ -50,8 +52,13 @@ const audit = (l: Listing) => router.push({ path: '/audit', query: { subject: l.
   </section>
 
   <p class="error" v-if="session.sellersError">{{ session.sellersError }}</p>
-  <p class="empty" v-else-if="!session.loadingSellers && session.listings.length === 0">No sellers found. Start a seller and run <span class="mono">npm run setup:register</span>, or set SELLER_PUBLIC_URL.</p>
-  <p class="empty" v-else-if="filtered.length === 0 && session.listings.length">No seller passes these filters.</p>
+  <div class="state grid-bg" v-else-if="!session.loadingSellers && session.listings.length === 0">
+    <p class="eyebrow">No sellers found</p>
+    <p class="muted">Start a seller and run <span class="mono">npm run setup:register</span>, or set SELLER_PUBLIC_URL.</p>
+  </div>
+  <div class="state grid-bg" v-else-if="filtered.length === 0 && session.listings.length">
+    <p class="eyebrow">No seller passes these filters</p>
+  </div>
 
   <section class="cards">
     <ListingCard v-for="l in filtered" :key="l.uaid" :listing="l" @buy="buy" @audit="audit" />
@@ -59,10 +66,9 @@ const audit = (l: Listing) => router.push({ path: '/audit', query: { subject: l.
 </template>
 
 <style scoped>
-.head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
-.head p { margin-top: 4px; max-width: 72ch; }
-.filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; }
-.chk { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); }
+.filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.chk { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-gray); }
 .num { width: 64px; padding: 4px 8px; }
+.state { display: flex; flex-direction: column; gap: 10px; align-items: center; text-align: center; padding: 56px 24px; border: 1px solid var(--color-black); margin-bottom: 24px; }
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
 </style>

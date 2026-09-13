@@ -5,6 +5,7 @@ import StageRail from '../components/StageRail.vue';
 import HashLink from '../components/HashLink.vue';
 import ReceiptsTable from '../components/ReceiptsTable.vue';
 import TrustSeal from '../components/TrustSeal.vue';
+import Eyebrow from '../components/Eyebrow.vue';
 import { session, loadSellers } from '../lib/session';
 import { getReceipts, postRate, timeOf } from '../lib/api';
 import { estimateTokens, fmt, priceFor } from '../lib/money';
@@ -85,6 +86,14 @@ async function sendRating() {
 </script>
 
 <template>
+  <section class="page-head">
+    <div>
+      <Eyebrow>02. Buy</Eyebrow>
+      <h1>One paid request<span class="sq" aria-hidden="true"></span></h1>
+      <p class="lede">Pick the work, set a counter offer and a budget, choose a trust policy. The buyer agent discovers a seller, negotiates a signed quote, pays inside the HTTP request and proves the settlement on the mirror node.</p>
+    </div>
+  </section>
+
   <div class="layout">
     <section class="card form">
       <h2>Buy a service</h2>
@@ -124,10 +133,10 @@ async function sendRating() {
         </div>
       </div>
       <div class="price-line" v-if="listPrice !== null">
-        <span class="muted">List price for this request</span><b class="mono">{{ fmt(listPrice) }}</b>
-        <template v-if="form.task === 'infer' && form.counter < 100"><span class="muted">your offer</span><b class="mono">{{ fmt(offerAmount) }}</b></template>
+        <span class="lbl">List price for this request</span><b class="mono">{{ fmt(listPrice) }}</b>
+        <template v-if="form.task === 'infer' && form.counter < 100"><span class="lbl">your offer</span><b class="mono">{{ fmt(offerAmount) }}</b></template>
       </div>
-      <button class="btn primary go" @click="run" :disabled="running">{{ running ? 'Running…' : 'Discover, negotiate, pay' }}</button>
+      <button class="btn primary go" @click="run" :disabled="running">{{ running ? 'Running…' : 'Discover, negotiate, pay' }} <span aria-hidden="true">↗</span></button>
       <p class="error" v-if="error">{{ error }}</p>
     </section>
 
@@ -167,7 +176,7 @@ async function sendRating() {
         </template>
       </dl>
       <div class="rate-box">
-        <span class="muted">Rate this seller, citing this payment</span>
+        <span class="lbl">Rate this seller, citing this payment</span>
         <div class="stars" role="radiogroup" aria-label="score">
           <button v-for="n in 5" :key="n" :class="{ on: n <= rating.score }" @click="rating.score = n" :aria-pressed="n <= rating.score" :disabled="!!rating.done">★</button>
         </div>
@@ -193,30 +202,27 @@ async function sendRating() {
 .response { grid-area: response; }
 .receipt { grid-area: receipt; }
 .receipts { grid-area: receipts; }
-.tabs { display: inline-flex; background: var(--inset); border-radius: 9px; padding: 3px; gap: 2px; }
-.tabs button { border: 0; background: none; padding: 6px 12px; border-radius: 7px; color: var(--ink-2); font-weight: 500; }
-.tabs button.on { background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
+.tabs { align-self: flex-start; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.price-line { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; padding: 10px 12px; background: var(--inset); border-radius: 10px; font-size: 13px; }
-.go { justify-content: center; padding: 11px; font-size: 14px; }
-.log { margin-top: 14px; border-top: 1px solid var(--hair); padding-top: 10px; font-size: 11.5px; max-height: 260px; overflow: auto; display: flex; flex-direction: column; gap: 3px; }
-.stage { color: var(--accent); }
+.lbl { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-gray); }
+.price-line { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--color-light-gray); font-size: 13px; }
+.price-line b { font-size: 13px; }
+.go { justify-content: center; padding: 12px; font-size: 12px; }
+.log { margin-top: 14px; border-top: 1px solid var(--color-light-gray); padding-top: 10px; font-size: 11.5px; max-height: 260px; overflow: auto; display: flex; flex-direction: column; gap: 3px; }
+.stage { color: var(--color-orange); }
 .answer { font-size: 15px; line-height: 1.55; max-width: 78ch; white-space: pre-wrap; }
 .rate-big b { font-size: 28px; }
 .usage { margin-top: 10px; font-size: 12.5px; }
-dl { display: grid; grid-template-columns: 120px 1fr; gap: 6px 14px; margin: 0; font-size: 13px; }
-dt { color: var(--ink-2); }
+dl { display: grid; grid-template-columns: 120px 1fr; gap: 8px 14px; margin: 0; font-size: 13px; }
+dt { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-gray); padding-top: 2px; }
 dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-.paid { font-weight: 600; color: var(--accent); }
+.paid { font-weight: 700; }
 .transfers { display: flex; flex-direction: column; gap: 3px; }
 .transfers div { display: flex; justify-content: space-between; gap: 12px; max-width: 420px; }
-.neg { color: var(--bad); } .pos { color: var(--ok); }
-.rate-box { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--hair); font-size: 13px; }
+.neg { color: var(--color-orange); }
+.pos { color: var(--color-black); }
+.rate-box { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--color-black); font-size: 13px; }
 .rate-box input { width: 240px; }
-.stars { display: inline-flex; gap: 2px; }
-.stars button { border: 0; background: none; font-size: 20px; color: var(--hair); padding: 0 2px; line-height: 1; }
-.stars button.on { color: var(--warn); }
-.ok-text { color: var(--ok); }
 @media (max-width: 980px) { .layout { grid-template-columns: 1fr; grid-template-areas: 'form' 'rail' 'response' 'receipt' 'receipts'; } }
 @media (max-width: 560px) { .two { grid-template-columns: 1fr; } dl { grid-template-columns: 1fr; } }
 </style>

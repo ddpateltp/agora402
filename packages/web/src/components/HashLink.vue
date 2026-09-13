@@ -9,13 +9,12 @@ const text = computed(() => props.label ?? (props.short ? shortId(props.id) : pr
 </script>
 
 <template>
-  <a class="hash mono" :href="href" target="_blank" rel="noopener" :title="`${kind} ${id} on HashScan`">
-    {{ text }}<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 1h6v6M9 1L1 9" fill="none" stroke="currentColor" stroke-width="1.3" /></svg>
-  </a>
+  <a class="hash mono" :href="href" target="_blank" rel="noopener" :title="`${kind} ${id} on HashScan`">{{ text }}<span class="arr" aria-hidden="true">↗</span></a>
 </template>
 
 <style scoped>
-.hash { display: inline-flex; align-items: center; gap: 4px; color: var(--ink); border-bottom: 1px solid var(--hair); }
-.hash:hover { text-decoration: none; color: var(--accent); border-color: var(--accent-line); }
-svg { color: var(--ink-3); flex: none; }
+.hash { display: inline-flex; align-items: center; gap: 3px; color: var(--color-black); border-bottom: 1px solid var(--color-light-gray); text-transform: none; letter-spacing: -0.01em; white-space: nowrap; }
+.hash:hover { color: var(--color-orange); border-color: var(--color-orange); }
+.arr { font-size: 0.85em; color: var(--color-gray); }
+.hash:hover .arr { color: var(--color-orange); }
 </style>

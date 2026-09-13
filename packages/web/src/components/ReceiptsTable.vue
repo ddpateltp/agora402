@@ -34,5 +34,6 @@ const usageText = (u: Record<string, unknown>) => {
 </template>
 
 <style scoped>
-tr.hi td { background: var(--accent-soft); }
+tr.hi td { background: var(--color-bg); }
+tr.hi td:first-child { border-left: 3px solid var(--color-orange); }
 </style>

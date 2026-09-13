@@ -6,6 +6,7 @@ import AttestationCard from '../components/AttestationCard.vue';
 import HashLink from '../components/HashLink.vue';
 import TrustSeal from '../components/TrustSeal.vue';
 import FindingList from '../components/FindingList.vue';
+import Eyebrow from '../components/Eyebrow.vue';
 import { session, loadSellers } from '../lib/session';
 import { fmt } from '../lib/money';
 import { AUDIT_STEPS, BUY_STEPS } from '../lib/rails';
@@ -41,10 +42,17 @@ async function run() {
 </script>
 
 <template>
+  <section class="page-head">
+    <div>
+      <Eyebrow>03. Audit</Eyebrow>
+      <h1>Order an audit<span class="sq" aria-hidden="true"></span></h1>
+      <p class="lede">An auditor agent is a seller like any other. You pay it over x402; it probes the subject live, writes each stage to the audit topic, and ends with an attestation the whole marketplace can read.</p>
+    </div>
+  </section>
+
   <div class="layout">
     <section class="card form">
-      <h2>Order an audit</h2>
-      <p class="muted intro">An auditor agent is a seller like any other. You pay it over x402; it probes the subject live, writes each stage to the audit topic, and ends with an attestation the whole marketplace can read.</p>
+      <h2>Subject and auditor</h2>
       <div class="field">
         <label for="subject">Seller to audit</label>
         <select id="subject" v-model="subject">
@@ -68,7 +76,7 @@ async function run() {
         <div class="hint" v-if="auditPrice">Flat price {{ fmt(auditPrice.pricing.kind === 'flat' ? auditPrice.pricing.amount : 0, auditPrice.decimals, auditPrice.symbol) }} per audit.</div>
         <div class="hint error" v-else-if="!session.loadingSellers">No auditor in the registry. Start one with <span class="mono">npm run auditor</span> and register it with <span class="mono">--role auditor</span>.</div>
       </div>
-      <button class="btn primary go" @click="run" :disabled="running || !chosenSubject || !chosenAuditor">{{ running ? 'Auditing…' : 'Pay the auditor and run the audit' }}</button>
+      <button class="btn primary go" @click="run" :disabled="running || !chosenSubject || !chosenAuditor">{{ running ? 'Auditing…' : 'Pay the auditor and run the audit' }} <span aria-hidden="true">↗</span></button>
       <p class="error" v-if="error">{{ error }}</p>
     </section>
 
@@ -96,7 +104,7 @@ async function run() {
     <section class="card stages" v-if="stageDetails.length">
       <h2>Stage by stage</h2>
       <div class="stage" v-for="s in stageDetails" :key="s.stage">
-        <div class="stage-head"><b>{{ s.index }}. {{ AUDIT_STEPS.find((x) => x.id === s.stage)?.title ?? s.stage }}</b><span class="dim">{{ s.model }}</span></div>
+        <div class="stage-head"><b><span class="n">{{ String(s.index).padStart(2, '0') }}</span> {{ AUDIT_STEPS.find((x) => x.id === s.stage)?.title ?? s.stage }}</b><span class="dim mono">{{ s.model }}</span></div>
         <p class="muted">{{ s.summary }}</p>
         <FindingList :findings="s.findings" empty-text="No findings in this stage." />
       </div>
@@ -109,15 +117,16 @@ async function run() {
 .form { grid-area: form; display: flex; flex-direction: column; gap: 14px; }
 .rails { grid-area: rails; }
 .verdict { grid-area: verdict; }
-.stages { grid-area: stages; display: flex; flex-direction: column; gap: 14px; }
-.intro { font-size: 13px; max-width: 60ch; }
-.current { display: flex; gap: 12px; align-items: center; padding: 10px 12px; background: var(--inset); border-radius: 10px; font-size: 12.5px; }
-.go { justify-content: center; padding: 11px; }
+.stages { grid-area: stages; display: flex; flex-direction: column; }
+.current { display: flex; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--color-light-gray); font-size: 12.5px; }
+.go { justify-content: center; padding: 12px; }
 .two-rails { display: grid; grid-template-columns: 1fr 1.4fr; gap: 24px; }
-.two-rails h3 { margin-bottom: 10px; }
-.log { margin-top: 14px; border-top: 1px solid var(--hair); padding-top: 10px; font-size: 11.5px; max-height: 220px; overflow: auto; }
-.stage { padding: 12px 14px; background: var(--inset); border-radius: 10px; }
+.two-rails h3 { margin-bottom: 12px; }
+.log { margin-top: 14px; border-top: 1px solid var(--color-light-gray); padding-top: 10px; font-size: 11.5px; max-height: 220px; overflow: auto; }
+.stage { padding: 14px 0; border-top: 1px solid var(--color-light-gray); }
+.stage:first-of-type { border-top: 0; padding-top: 0; }
 .stage-head { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.n { color: var(--color-orange); font-family: var(--font-mono); font-size: 12px; margin-right: 4px; }
 .stage p { margin-bottom: 8px; font-size: 13px; }
 .not-recorded { margin-top: 12px; font-size: 12.5px; }
 @media (max-width: 980px) { .layout { grid-template-columns: 1fr; grid-template-areas: 'form' 'rails' 'verdict' 'stages'; } .two-rails { grid-template-columns: 1fr; } }

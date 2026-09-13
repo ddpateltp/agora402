@@ -22,7 +22,7 @@ const online = computed(() => Boolean(props.listing.health));
         <div class="facts">
           <span class="pill" :class="online ? 'ok' : 'neutral'">{{ online ? 'online' : 'unreachable' }}</span>
           <span class="pill neutral" v-if="isAuditor">auditor</span>
-          <span class="dim">{{ hostOf(listing.baseUrl) }}</span>
+          <span class="dim mono">{{ hostOf(listing.baseUrl) }}</span>
         </div>
       </div>
       <TrustSeal :trust="listing.trust" :size="compact ? 48 : 60" />
@@ -54,19 +54,21 @@ const online = computed(() => Boolean(props.listing.health));
 
 <style scoped>
 .listing { display: flex; flex-direction: column; gap: 14px; }
-.listing.dangerous { border-color: rgba(201, 58, 47, 0.45); }
+.listing.dangerous { border-color: var(--color-orange); }
 header { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
 .who { min-width: 0; }
-.facts { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12.5px; flex-wrap: wrap; }
-.endpoints { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.endpoints li { padding: 10px 12px; background: var(--inset); border-radius: 10px; }
+.who h2 { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; }
+.facts { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; flex-wrap: wrap; }
+.endpoints { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.endpoints li { padding: 10px 0; border-top: 1px solid var(--color-light-gray); }
+.endpoints li:last-child { border-bottom: 1px solid var(--color-light-gray); }
 .ep { display: flex; gap: 8px; align-items: center; }
-.method { color: var(--accent); font-weight: 500; }
-.price { margin-top: 3px; font-weight: 500; }
-.desc { margin-top: 4px; color: var(--ink-2); font-size: 12.5px; }
+.method { color: var(--color-orange); font-weight: 700; }
+.price { margin-top: 3px; font-weight: 600; }
+.desc { margin-top: 4px; color: var(--color-gray); font-size: 12.5px; }
 footer { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
 .meta { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
 .actions { display: flex; gap: 8px; }
-.warn-line { font-size: 12.5px; color: var(--bad); background: var(--bad-soft); padding: 8px 10px; border-radius: 8px; }
-.warn-line.stale { color: var(--warn); background: var(--warn-soft); }
+.warn-line { padding: 8px 10px; border: 1px solid var(--color-orange); border-left-width: 4px; font-size: 12.5px; }
+.warn-line.stale { border-color: var(--color-black); border-style: dashed; border-left-style: solid; }
 </style>

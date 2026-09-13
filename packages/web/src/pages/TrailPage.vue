@@ -5,6 +5,7 @@ import HashLink from '../components/HashLink.vue';
 import ReceiptsTable from '../components/ReceiptsTable.vue';
 import TrustSeal from '../components/TrustSeal.vue';
 import FindingList from '../components/FindingList.vue';
+import Eyebrow from '../components/Eyebrow.vue';
 import { consensusToDate, getAudits, getReceipts, getReputation, getTrail } from '../lib/api';
 import { session } from '../lib/session';
 import type { Attestation, Finding, ReputationSummary, TrailEntry, VerifiedReceipt } from '../lib/types';
@@ -62,15 +63,18 @@ const ratingRows = computed(() => Object.entries(reputation.value).flatMap(([uai
 </script>
 
 <template>
-  <section class="head">
+  <section class="page-head">
     <div>
-      <h1>Everything we wrote to Hedera</h1>
-      <p class="muted">Three topics, all public, all replayable from the mirror node without a key. Anyone can recompute what this page shows.</p>
+      <Eyebrow>04. Trail</Eyebrow>
+      <h1>Everything we wrote to Hedera<span class="sq" aria-hidden="true"></span></h1>
+      <p class="lede">Three topics, all public, all replayable from the mirror node without a key. Anyone can recompute what this page shows.</p>
     </div>
-    <div class="tabs">
-      <button :class="{ on: tab === 'audits' }" @click="tab = 'audits'">Audits<span class="cnt">{{ attestations.length }}</span></button>
-      <button :class="{ on: tab === 'receipts' }" @click="tab = 'receipts'">Receipts<span class="cnt">{{ receipts.length }}</span></button>
-      <button :class="{ on: tab === 'ratings' }" @click="tab = 'ratings'">Ratings<span class="cnt">{{ ratingRows.length }}</span></button>
+    <div class="controls">
+      <div class="tabs">
+        <button :class="{ on: tab === 'audits' }" @click="tab = 'audits'">Audits<span class="cnt">{{ attestations.length }}</span></button>
+        <button :class="{ on: tab === 'receipts' }" @click="tab = 'receipts'">Receipts<span class="cnt">{{ receipts.length }}</span></button>
+        <button :class="{ on: tab === 'ratings' }" @click="tab = 'ratings'">Ratings<span class="cnt">{{ ratingRows.length }}</span></button>
+      </div>
       <button class="btn small" @click="load" :disabled="loading">{{ loading ? 'Reading…' : 'Refresh' }}</button>
     </div>
   </section>
@@ -96,9 +100,9 @@ const ratingRows = computed(() => Object.entries(reputation.value).flatMap(([uai
       <p class="empty" v-if="!selected">Pick an attestation.</p>
       <template v-else>
         <div class="who" v-if="selectedAtt">
-          <span class="muted">subject</span><b>{{ nameOf(selectedAtt.attestation.subject) }}</b>
-          <span class="muted">auditor</span><HashLink kind="account" :id="selectedAtt.attestation.auditorAccount" />
-          <span class="muted">content hash</span><span class="mono dim">{{ selectedAtt.attestation.contentHash.slice(0, 16) }}…</span>
+          <span class="lbl">subject</span><b>{{ nameOf(selectedAtt.attestation.subject) }}</b>
+          <span class="lbl">auditor</span><HashLink kind="account" :id="selectedAtt.attestation.auditorAccount" />
+          <span class="lbl">content hash</span><span class="mono dim">{{ selectedAtt.attestation.contentHash.slice(0, 16) }}…</span>
         </div>
         <ol class="entries">
           <li v-for="e in trail" :key="e.sequenceNumber">
@@ -147,25 +151,24 @@ const ratingRows = computed(() => Object.entries(reputation.value).flatMap(([uai
 </template>
 
 <style scoped>
-.head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
-.head p { margin-top: 4px; max-width: 70ch; }
-.tabs { display: flex; align-items: center; gap: 6px; }
-.tabs button:not(.btn) { border: 1px solid var(--hair); background: var(--card); border-radius: 999px; padding: 6px 12px; color: var(--ink-2); font-weight: 500; display: inline-flex; gap: 6px; align-items: center; }
-.tabs button.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-line); }
-.cnt { font-family: var(--mono); font-size: 11px; background: rgba(0, 0, 0, 0.05); border-radius: 999px; padding: 0 6px; }
+.controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cnt { margin-left: 8px; color: var(--color-gray); }
+.tabs button.on .cnt { color: var(--color-light-gray); }
+.lbl { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-gray); }
 .audits { display: grid; grid-template-columns: minmax(280px, 360px) 1fr; gap: 16px; align-items: start; }
 .list ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.list li { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 10px; cursor: pointer; border: 1px solid transparent; }
-.list li:hover { background: var(--inset); }
-.list li.on { background: var(--accent-soft); border-color: var(--accent-line); }
+.list li { display: flex; gap: 10px; align-items: center; padding: 8px 10px; cursor: pointer; border: 1px solid transparent; }
+.list li:hover { background: var(--color-bg); }
+.list li.on { border-color: var(--color-black); background: var(--color-bg); }
 .li-body { font-size: 13px; min-width: 0; }
-.who { display: flex; gap: 6px 10px; flex-wrap: wrap; align-items: center; font-size: 12.5px; margin-bottom: 14px; padding: 8px 12px; background: var(--inset); border-radius: 10px; }
-.entries { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
-.entries li { display: grid; grid-template-columns: 44px 1fr; gap: 10px; }
-.seq { color: var(--ink-3); font-size: 12px; padding-top: 2px; }
+.who { display: flex; gap: 6px 12px; flex-wrap: wrap; align-items: center; font-size: 12.5px; margin-bottom: 14px; padding: 8px 12px; border: 1px solid var(--color-light-gray); }
+.entries { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.entries li { display: grid; grid-template-columns: 44px 1fr; gap: 10px; padding: 12px 0; border-top: 1px solid var(--color-light-gray); }
+.entries li:first-child { border-top: 0; padding-top: 0; }
+.seq { color: var(--color-orange); font-size: 12px; padding-top: 2px; }
 .entry-head { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; font-size: 13px; }
 .entry p { margin: 4px 0 6px; font-size: 13px; }
+.entry .toggle { margin-top: 6px; }
 .intro { font-size: 13px; margin-bottom: 12px; max-width: 72ch; }
-.stars i { font-style: normal; color: var(--hair); } .stars i.on { color: var(--warn); }
 @media (max-width: 900px) { .audits { grid-template-columns: 1fr; } }
 </style>

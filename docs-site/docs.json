@@ -4,9 +4,9 @@
   "name": "Agora402",
   "description": "Agora402 is an agent-to-agent services marketplace on Hedera. Agents discover, negotiate and pay per request over x402, with receipts and attestations on HCS.",
   "colors": {
-    "primary": "#4338ca",
-    "light": "#a5a8ee",
-    "dark": "#3730a3"
+    "primary": "#ff4d00",
+    "light": "#ff4d00",
+    "dark": "#080808"
   },
   "logo": {
     "light": "/logo/agora402-light.svg",
@@ -18,20 +18,20 @@
     "default": "light"
   },
   "fonts": {
-    "family": "Inter",
+    "family": "DM Sans",
     "heading": {
-      "family": "Inter",
-      "weight": 600
+      "family": "DM Sans",
+      "weight": 700
     },
     "body": {
-      "family": "Inter",
+      "family": "DM Sans",
       "weight": 400
     }
   },
   "background": {
     "color": {
-      "light": "#eef1f6",
-      "dark": "#141a26"
+      "light": "#f8f8f6",
+      "dark": "#080808"
     }
   },
   "styling": {

@@ -29,7 +29,7 @@ const failed = computed(() => props.steps.some((s) => props.state[s.id]?.status 
     <li v-for="(s, i) in steps" :key="s.id" :class="state[s.id]?.status ?? 'idle'">
       <div class="dot"><span v-if="state[s.id]?.status === 'done'">✓</span><span v-else-if="state[s.id]?.status === 'failed'">!</span><span v-else>{{ i + 1 }}</span></div>
       <div class="body">
-        <div class="title">{{ s.title }}<span class="at mono" v-if="state[s.id]?.at">{{ state[s.id]!.at }}</span></div>
+        <div class="title">{{ s.title }}<span class="at" v-if="state[s.id]?.at">{{ state[s.id]!.at }}</span></div>
         <div class="msg">{{ state[s.id]?.message ?? s.hint }}</div>
       </div>
     </li>
@@ -38,22 +38,21 @@ const failed = computed(() => props.steps.some((s) => props.state[s.id]?.status 
 
 <style scoped>
 .rail { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-li { display: grid; grid-template-columns: 26px 1fr; gap: 12px; position: relative; padding-bottom: 16px; }
+li { display: grid; grid-template-columns: 24px 1fr; gap: 12px; position: relative; padding-bottom: 16px; }
 li:last-child { padding-bottom: 0; }
-li:not(:last-child)::before { content: ''; position: absolute; left: 12.5px; top: 26px; bottom: 2px; width: 1px; background: var(--hair); }
-li.done:not(:last-child)::before { background: var(--accent-line); }
-.dot { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-family: var(--mono); font-size: 11.5px; background: var(--inset); color: var(--ink-3); border: 1px solid var(--hair); }
-li.active .dot { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-line); animation: pulse 1.4s ease-in-out infinite; }
-li.done .dot { background: var(--accent); color: #fff; border-color: var(--accent); }
-li.failed .dot { background: var(--bad-soft); color: var(--bad); border-color: var(--bad); }
+li:not(:last-child)::before { content: ''; position: absolute; left: 11.5px; top: 24px; bottom: 2px; width: 1px; background: var(--color-light-gray); }
+li.done:not(:last-child)::before { background: var(--color-black); }
+.dot { width: 24px; height: 24px; display: grid; place-items: center; font-family: var(--font-mono); font-size: 11px; background: var(--color-white); color: var(--color-gray); border: 1px solid var(--color-light-gray); }
+li.active .dot { border-color: var(--color-black); color: var(--color-black); animation: blink 1.1s steps(1, end) infinite; }
+li.done .dot { background: var(--color-black); color: var(--color-white); border-color: var(--color-black); }
+li.failed .dot { background: var(--color-orange); color: var(--color-white); border-color: var(--color-orange); }
 .body { min-width: 0; padding-top: 3px; }
-.title { font-weight: 500; display: flex; justify-content: space-between; gap: 8px; }
-.at { font-weight: 400; color: var(--ink-3); font-size: 11.5px; }
-.msg { color: var(--ink-2); font-size: 12.5px; margin-top: 2px; overflow-wrap: anywhere; }
-li.idle .msg { color: var(--ink-3); }
-li.failed .msg { color: var(--bad); }
+.title { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; }
+.at { font-family: var(--font-mono); font-size: 11px; font-weight: 400; color: var(--color-gray); }
+.msg { margin-top: 2px; font-size: 12.5px; color: var(--color-gray); overflow-wrap: anywhere; }
+li.failed .msg { color: var(--color-orange); }
 .compact li { padding-bottom: 10px; }
 .compact .msg { display: none; }
 .compact li.active .msg, .compact li.failed .msg { display: block; }
-@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(67, 56, 202, 0.35); } 50% { box-shadow: 0 0 0 6px rgba(67, 56, 202, 0); } }
+@keyframes blink { 50% { background: var(--color-orange); border-color: var(--color-orange); color: var(--color-white); } }
 </style>

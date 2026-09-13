@@ -53,7 +53,7 @@ const sendIndex = (_req: Request, res: Response) => {
   if (existsSync(webIndex)) res.type('html').send(readFileSync(webIndex, 'utf8'));
   else res.type('text').status(503).send('The site is not built. Run `npm run build` (or `npm run web` for the Vite dev server on http://localhost:4405).');
 };
-app.get(['/', '/buy', '/audit', '/trail', '/demo'], sendIndex);
+app.get(['/', '/market', '/buy', '/audit', '/trail', '/demo'], sendIndex);
 
 app.get('/api/config', (_req, res) => {
   res.json({
