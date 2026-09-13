@@ -22,9 +22,13 @@ the gaps that showed up on the way became five upstream pull requests, listed [b
 
 | | |
 |---|---|
+| Live app | https://q3xnnzjevj.eu-west-1.awsapprunner.com, the site and the buyer dashboard |
+| Seller service | https://takpbs3gcv.eu-west-1.awsapprunner.com, `POST /v1/infer` and `GET /v1/rates/hbar` behind x402; an unpaid request answers 402 with the payment challenge |
+| Auditor service | https://r8h52nz5pp.eu-west-1.awsapprunner.com, `POST /v1/audit` behind x402 |
 | Repository | https://github.com/ddpateltp/agora402 |
 | Demo video | _added with the submission_ |
-| Demo script | [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md), the nine steps of the `/demo` page |
+| Documentation | https://agora402.mintlify.site |
+| API reference | https://agora402.mintlify.site/api/overview |
 | Hedera Harness fork | https://github.com/ddpateltp/hedera-harness, one branch per upstream PR |
 | Upstream PRs | [#67](https://github.com/hedera-dev/hedera-harness/pull/67), [#68](https://github.com/hedera-dev/hedera-harness/pull/68), [#69](https://github.com/hedera-dev/hedera-harness/pull/69), [#70](https://github.com/hedera-dev/hedera-harness/pull/70), [#79](https://github.com/hedera-dev/hedera-harness/pull/79) against `hedera-dev/hedera-harness` `dev` |
 | Registry topic | [0.0.10503372](https://hashscan.io/testnet/topic/0.0.10503372) |
@@ -118,9 +122,13 @@ taken along the way.
 
 ## Try it in five minutes
 
-You need Node 20+, one Hedera testnet ECDSA account from [portal.hedera.com](https://portal.hedera.com) (it acts
-as the seller; the buyer and auditor accounts are created from it), and optionally a [Groq](https://console.groq.com)
-or Anthropic API key for real inference and audit summaries. Without a key, `LLM_PROVIDER=mock` answers.
+The hosted site is at https://q3xnnzjevj.eu-west-1.awsapprunner.com. Open `/demo` there and press Next to watch a
+paid audit, a negotiated payment and a rating land on testnet.
+
+To run it yourself you need Node 20+, one Hedera testnet ECDSA account from
+[portal.hedera.com](https://portal.hedera.com) (it acts as the seller; the buyer and auditor accounts are created
+from it), and optionally a [Groq](https://console.groq.com) or Anthropic API key for real inference and audit
+summaries. Without a key, `LLM_PROVIDER=mock` answers.
 
 ```bash
 git clone https://github.com/ddpateltp/agora402.git
@@ -241,9 +249,17 @@ settlement.
 | Reputation topic | [0.0.10520540](https://hashscan.io/testnet/topic/0.0.10520540) |
 | Facilitator | Blocky402 hosted testnet, `api.testnet.blocky402.com` |
 
-The sellers run on the developer's machine during the demo, so their endpoints are not reachable from the
-internet. The topics, the receipts, the attestation and the ratings are public and can be replayed on the `/trail`
-page or on HashScan at any time.
+The three services run on AWS App Runner in `eu-west-1`.
+
+| Service | URL |
+|---|---|
+| Dashboard and site | https://q3xnnzjevj.eu-west-1.awsapprunner.com |
+| Seller (infer, hbar-rate) | https://takpbs3gcv.eu-west-1.awsapprunner.com |
+| Auditor (audit) | https://r8h52nz5pp.eu-west-1.awsapprunner.com |
+
+Both sellers publish their manifest at `/.well-known/agora402.json` and their agent card at
+`/.well-known/agent.json`. The topics, the receipts, the attestation and the ratings are public and can be replayed
+on the `/trail` page or on HashScan at any time.
 
 ## Repository layout
 
@@ -258,7 +274,7 @@ packages/seller     Express service behind @x402/express: /v1/infer, /v1/rates/h
 packages/buyer      BuyerAgent, the `agora` CLI and the dashboard API
 packages/web        the site: Vue 3 and Vite; Marketplace, Buy, Audit, Trail and the scripted /demo
 scripts             setup: topics, accounts, the TOLL token, listing publication, balances
-docs                demo script, media
+docs                media
 hedera_harness_contribution
                     the five upstream harness PRs: before-and-after demos, prompts, planning record
 ```
