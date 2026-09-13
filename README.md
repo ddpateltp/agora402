@@ -26,7 +26,6 @@ the gaps that showed up on the way became five upstream pull requests, listed [b
 | Seller service | https://takpbs3gcv.eu-west-1.awsapprunner.com, `POST /v1/infer` and `GET /v1/rates/hbar` behind x402; an unpaid request answers 402 with the payment challenge |
 | Auditor service | https://r8h52nz5pp.eu-west-1.awsapprunner.com, `POST /v1/audit` behind x402 |
 | Repository | https://github.com/ddpateltp/agora402 |
-| Demo video | _added with the submission_ |
 | Documentation | https://agora402.mintlify.site |
 | API reference | https://agora402.mintlify.site/api/overview |
 | Hedera Harness fork | https://github.com/ddpateltp/hedera-harness, one branch per upstream PR |
@@ -180,7 +179,7 @@ buyer pays anyone except sellers attested dangerous, verified sellers first. The
 | `/buy` | One paid request: prompt, counter offer, budgets, trust policy, the live five-stage rail, the response, the receipt with the on-chain transfers, a rating box, and the receipts table with the chain match column. |
 | `/audit` | Order an audit: pick the subject and the auditor, watch the payment rail and the four-stage pipeline live, read the attestation and every finding. |
 | `/trail` | Replay of the audit, receipts and reputation topics straight from the mirror node. |
-| `/demo` | The scripted walkthrough used for the video. Step 2 can replay the last audit from the mirror node instead of paying. |
+| `/demo` | A guided walkthrough of the whole flow, one step at a time. Step 2 can replay the last audit from the mirror node instead of paying. |
 
 ## How it works
 

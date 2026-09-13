@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The scripted walkthrough for the video. One card per step, one Next button,
+ * The guided walkthrough of the whole flow. One card per step, one Next button,
  * real network calls through the same API and components as the site.
  * Captions are what to say; inputs are prefilled so nothing is typed on camera.
  */
