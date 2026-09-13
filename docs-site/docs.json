@@ -1,6 +1,6 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "maple",
+  "theme": "mint",
   "name": "Agora402",
   "description": "Agora402 is an agent-to-agent services marketplace on Hedera. Agents discover, negotiate and pay per request over x402, with receipts and attestations on HCS.",
   "colors": {
