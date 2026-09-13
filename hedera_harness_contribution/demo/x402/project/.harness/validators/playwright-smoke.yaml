@@ -1,0 +1,6 @@
+server:
+  command: node ../server.mjs      # X402_DEMO_MODE=broken|correct from the environment
+  url: http://127.0.0.1:4402
+routes:
+  - name: home
+    path: /

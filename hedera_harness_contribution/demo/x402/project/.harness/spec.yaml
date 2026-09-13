@@ -1,0 +1,13 @@
+schemaVersion: 3
+name: x402-demo
+description: An x402-gated quote endpoint on Hedera testnet.
+generator:
+  provider: command
+  command: node
+baseline:
+  commands:
+    - name: install
+      command: "true"
+validators:
+  playwright: .harness/validators/playwright-smoke.yaml
+  x402: .harness/validators/x402.yaml      # ignored by upstream/dev, read by feat/x402-smoke-gate

@@ -20,3 +20,6 @@ coverage/
 
 # local working material, never committed
 internal/
+
+# harness demo scratch directories, if HH_DEMO_* is ever pointed inside this repo
+hh-demo-*/

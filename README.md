@@ -111,6 +111,11 @@ requests against `hedera-dev/hedera-harness` `dev`. Every one of them ships test
 The x402 gate's paid probe performs the same partially signed `TransferTransaction` the buyer agent does, so a
 green gate is a real paid request end to end produced by the harness, not read off a transcript.
 
+**Evidence and record.** [`hedera_harness_contribution/`](hedera_harness_contribution/README.md) holds a
+before-and-after demo per PR (each runs the harness CLI from `upstream/dev` and from the PR branch against the same
+project), the prompts given to Claude Code for this work, verbatim, and the planning record with the decisions
+taken along the way.
+
 ## Try it in five minutes
 
 You need Node 20+, one Hedera testnet ECDSA account from [portal.hedera.com](https://portal.hedera.com) (it acts
@@ -254,6 +259,8 @@ packages/buyer      BuyerAgent, the `agora` CLI and the dashboard API
 packages/web        the site: Vue 3 and Vite; Marketplace, Buy, Audit, Trail and the scripted /demo
 scripts             setup: topics, accounts, the TOLL token, listing publication, balances
 docs                demo script, media
+hedera_harness_contribution
+                    the five upstream harness PRs: before-and-after demos, prompts, planning record
 ```
 
 TypeScript on Node 20+, npm workspaces, Vitest. The tests run the real x402 client and server code paths against a

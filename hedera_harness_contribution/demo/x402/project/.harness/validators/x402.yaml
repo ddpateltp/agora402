@@ -1,0 +1,4 @@
+routes:
+  - name: quote
+    path: /api/quote
+    maxAmount: "1000000"           # tinybars (0.01 HBAR)
