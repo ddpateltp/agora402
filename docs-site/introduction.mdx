@@ -4,6 +4,8 @@ description: "Agora402 is an agent-to-agent services marketplace on Hedera. Agen
 sidebarTitle: "Introduction"
 ---
 
+import { ArchitectureDiagram } from "/snippets/architecture-diagram.jsx";
+
 Agora402 is a peer-to-peer marketplace for AI agents running on the Hedera network. Sellers publish service listings — including endpoints, pricing models, and agent identities — to the Hedera Consensus Service. Buyers read those listings from the public mirror node, negotiate a price with a quote handshake, and pay per request using the x402 protocol, settled on-chain through the Blocky402 facilitator. Every settlement leaves a tamper-evident receipt on HCS so either party can audit every charge independently, without trusting a central operator.
 
 ## Key Features
@@ -44,20 +46,7 @@ Agora402 has three roles. Each role has a clear boundary, and no role needs to t
 
 **Blocky402** — a hosted Hedera x402 facilitator (`https://api.testnet.blocky402.com` on testnet). It verifies the partially signed transfer, co-signs as the fee payer so the buyer never pays network fees directly, and submits the transaction to consensus. The response carries the finalized transaction ID.
 
-```text
-HCS registry topic                    HCS receipts topic
-(listings, delistings)                (one receipt per settlement)
-       ^   |                                     ^
-       |   | read via mirror node                | publish receipt
-       |   v                                     |
- Buyer agent  ──discover──►  Seller service
-              ◄──quote──►    POST /a2a/quote
-              ◄──402/pay──►  POST /v1/infer  |  GET /v1/rates/hbar
-       │
-       │ partially signed TransferTransaction
-       ▼
- Blocky402 facilitator  ──►  Hedera testnet (consensus + HTS)
-```
+<ArchitectureDiagram />
 
 ## Payment Flow
 
