@@ -1,6 +1,6 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
+  "theme": "maple",
   "name": "Agora402",
   "description": "Agora402 is an agent-to-agent services marketplace on Hedera. Agents discover, negotiate and pay per request over x402, with receipts and attestations on HCS.",
   "colors": {
@@ -165,11 +165,12 @@
     ]
   },
   "navbar": {
-    "primary": {
-      "type": "button",
-      "label": "GitHub",
-      "href": "https://github.com/ddpateltp/agora402"
-    }
+    "links": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com/ddpateltp/agora402"
+      }
+    ]
   },
   "footer": {
     "socials": {
@@ -178,12 +179,14 @@
   },
   "contextual": {
     "options": [
-      "assistant",
       "copy",
       "view",
       "claude",
+      "chatgpt",
+      "mcp",
       "cursor"
-    ]
+    ],
+    "display": "header"
   },
   "redirects": [
     {
@@ -202,8 +205,5 @@
       "source": "/api/rates",
       "destination": "/api/endpoints/hbar-rate"
     }
-  ],
-  "search": {
-    "prompt": "Search or ask the assistant"
-  }
+  ]
 }
