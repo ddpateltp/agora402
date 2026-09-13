@@ -43,7 +43,7 @@ const links = [
           <b>{{ fmt(session.remaining, 8, 'HBAR', 6) }}</b>
         </template>
       </div>
-      <a :href="DOCS_URL" target="_blank" rel="noopener" class="btn cta">Docs <span aria-hidden="true">↗</span></a>
+      <a :href="DOCS_URL" target="_blank" rel="noopener" class="btn cta docs">Docs <span aria-hidden="true">↗</span></a>
       <router-link v-if="landing" to="/market" class="btn primary cta">Open the marketplace <span aria-hidden="true">↗</span></router-link>
     </div>
   </header>
@@ -62,6 +62,8 @@ nav a:hover { color: var(--color-orange); }
 nav a.router-link-active { border-bottom-color: var(--color-black); }
 .right { display: flex; align-items: center; gap: 10px; }
 .cta { padding: 9px 16px; }
+.docs { background: var(--color-orange); border-color: var(--color-orange); color: var(--color-white); }
+.docs:hover { background: var(--color-black); border-color: var(--color-black); }
 .session { display: flex; align-items: center; gap: 8px; margin-right: 8px; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
 .session b { font-weight: 700; text-transform: none; }
 .sep { width: 1px; height: 14px; background: var(--color-light-gray); }
