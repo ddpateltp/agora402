@@ -1,0 +1,137 @@
+---
+title: "Agora402 Environment Variables Configuration Reference"
+description: "Complete reference for all Agora402 environment variables. Copy .env.example, fill in your Hedera accounts, and choose your LLM provider."
+sidebarTitle: "Environment"
+---
+
+All Agora402 configuration lives in a single `.env` file at the repository root. The repository ships an `.env.example` that lists every variable with safe placeholder values and inline comments — copy it to `.env` and fill in the values that apply to your setup. You never need to edit source files or pass environment variables on the command line; the setup scripts and runtime packages read everything from `.env` automatically.
+
+Start by copying the example file:
+
+```bash
+cp .env.example .env
+```
+
+Then open `.env` in your editor and work through the sections below. The only values you must fill in by hand before running any scripts are `SELLER_ACCOUNT_ID` and `SELLER_PRIVATE_KEY`. Everything else is either set by the setup scripts or has a working default.
+
+<Warning>
+  Never commit `.env` to version control. It contains private keys. Add `.env` to your `.gitignore` immediately after creating it and verify it is listed before your first `git add`.
+</Warning>
+
+## Network
+
+| Variable         | Values                 | Description                                                                                                                                       |
+| ---------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HEDERA_NETWORK` | `testnet` \| `mainnet` | The Hedera network to connect to. Defaults to `testnet`. Change to `mainnet` only when you have mainnet accounts and a mainnet Blocky402 API key. |
+
+## Seller Account
+
+These two variables are the only ones you must supply manually. Obtain them from [portal.hedera.com](https://portal.hedera.com) as described in the [Accounts](/setup/accounts) guide.
+
+| Variable             | Example       | Description                                                                                                                           |
+| -------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `SELLER_ACCOUNT_ID`  | `0.0.12345`   | Your seller's Hedera account in `shard.realm.num` format. This account receives all payments and signs registry and receipt messages. |
+| `SELLER_PRIVATE_KEY` | `0xabc123...` | The ECDSA private key for your seller account, as a hex string starting with `0x`.                                                    |
+
+## Buyer Account
+
+Do not fill these in by hand. Run `npm run setup:buyer` and the script writes both values to `.env` automatically.
+
+| Variable            | Example       | Description                                                                     |
+| ------------------- | ------------- | ------------------------------------------------------------------------------- |
+| `BUYER_ACCOUNT_ID`  | `0.0.67890`   | The buyer agent's Hedera account. Auto-set by `npm run setup:buyer`.            |
+| `BUYER_PRIVATE_KEY` | `0xdef456...` | The ECDSA private key for the buyer account. Auto-set by `npm run setup:buyer`. |
+
+## Facilitator
+
+| Variable          | Default                             | Description                                                                                                                                          |
+| ----------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `FACILITATOR_URL` | `https://api.testnet.blocky402.com` | The Blocky402 x402 facilitator endpoint. The testnet URL requires no API key. For mainnet, use `https://api.blocky402.com` with a Blocky402 API key. |
+
+## HCS Topics
+
+These are written by `npm run setup:topics`. Leave them empty until you run that script.
+
+| Variable            | Example       | Description                                                                                                                                      |
+| ------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `REGISTRY_TOPIC_ID` | `0.0.4567890` | The HCS topic where sellers publish service listings. Buyers read it via the Hedera mirror node. Set by `npm run setup:topics`.                  |
+| `RECEIPTS_TOPIC_ID` | `0.0.4567891` | The HCS topic where the seller writes a receipt for every settled payment. Used by `agora receipts` for auditing. Set by `npm run setup:topics`. |
+
+## HTS Token (Optional)
+
+| Variable        | Example       | Description                                                                                                         |
+| --------------- | ------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `TOLL_TOKEN_ID` | `0.0.4567892` | The HTS TOLL token ID for alternative settlement. Leave empty to settle in HBAR only. Set by `npm run setup:token`. |
+
+## Seller Service
+
+| Variable            | Default                 | Description                                                                                                                                                                                                                     |
+| ------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SELLER_PORT`       | `4402`                  | The HTTP port the seller service listens on.                                                                                                                                                                                    |
+| `SELLER_PUBLIC_URL` | `http://localhost:4402` | The publicly accessible base URL for the seller. This URL is embedded in the on-chain registry listing so buyer agents can reach the seller. Change this to your public hostname or tunnel URL when testing with remote buyers. |
+| `SELLER_NAME`       | `agora-seller-1`        | The display name for this seller in the registry listing. Visible to buyer agents when they run `agora discover`.                                                                                                               |
+
+## LLM Provider
+
+| Variable            | Default              | Description                                                                                                         |
+| ------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `LLM_PROVIDER`      | `groq`               | The LLM backend for the `POST /v1/infer` endpoint. Set to `groq`, `anthropic`, or `mock`.                           |
+| `GROQ_API_KEY`      | *(empty)*            | Your Groq API key. Required when `LLM_PROVIDER=groq`. Get one free at [console.groq.com](https://console.groq.com). |
+| `GROQ_MODEL`        | `openai/gpt-oss-20b` | The model identifier passed to the Groq API.                                                                        |
+| `ANTHROPIC_API_KEY` | *(empty)*            | Your Anthropic API key. Required when `LLM_PROVIDER=anthropic`.                                                     |
+| `ANTHROPIC_MODEL`   | `claude-sonnet-4-5`  | The model identifier passed to the Anthropic API.                                                                   |
+
+<Tip>
+  Use `LLM_PROVIDER=mock` while you are setting up accounts, topics, and the payment flow. The mock provider returns a canned response instantly, so you can verify the full discover → quote → pay → receipt cycle without consuming any inference credits or needing an API key.
+</Tip>
+
+## Buyer Dashboard
+
+| Variable     | Default | Description                               |
+| ------------ | ------- | ----------------------------------------- |
+| `BUYER_PORT` | `4403`  | The HTTP port for the buyer dashboard UI. |
+
+## Complete .env.example Reference
+
+The snippet below shows the complete `.env.example` for reference. Copy it, then fill in `SELLER_ACCOUNT_ID`, `SELLER_PRIVATE_KEY`, and your chosen `LLM_PROVIDER` key to get started.
+
+```bash .env.example
+# Copy to .env and fill in. Never commit .env.
+# Seller: your ECDSA testnet account from portal.hedera.com.
+# Buyer: created for you by `npm run setup:buyer`, do not fill by hand.
+
+HEDERA_NETWORK=testnet
+
+# Seller: the account that receives payments and signs registry / receipt messages
+SELLER_ACCOUNT_ID=0.0.xxxxx
+SELLER_PRIVATE_KEY=0x...
+
+# Buyer agent: the account that pays (written by npm run setup:buyer)
+BUYER_ACCOUNT_ID=0.0.yyyyy
+BUYER_PRIVATE_KEY=0x...
+
+# x402 facilitator (Blocky402 hosted testnet, no API key needed)
+FACILITATOR_URL=https://api.testnet.blocky402.com
+
+# HCS topics (created by `npm run setup:topics`)
+REGISTRY_TOPIC_ID=
+RECEIPTS_TOPIC_ID=
+
+# Optional HTS settlement token (created by `npm run setup:token`). Leave empty for HBAR only.
+TOLL_TOKEN_ID=
+
+# Seller HTTP service
+SELLER_PORT=4402
+SELLER_PUBLIC_URL=http://localhost:4402
+SELLER_NAME=agora-seller-1
+
+# LLM provider for the paid inference service: groq | anthropic | mock
+LLM_PROVIDER=groq
+GROQ_API_KEY=
+GROQ_MODEL=openai/gpt-oss-20b
+ANTHROPIC_API_KEY=
+ANTHROPIC_MODEL=claude-sonnet-4-5
+
+# Buyer dashboard
+BUYER_PORT=4403
+```

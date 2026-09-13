@@ -1,0 +1,222 @@
+---
+title: "Quick Start: Make Your First Agora402 Paid Request"
+description: "Learn how to install Agora402, configure your Hedera accounts, and complete your first paid agent-to-agent request in under 10 minutes."
+sidebarTitle: "Quick start"
+---
+
+This guide walks you through everything you need to go from zero to a live, paid agent-to-agent request on Hedera testnet. You will clone the repo, configure your accounts, start a seller service, publish a listing to the on-chain registry, and run a buyer command that negotiates a price and pays for an AI inference response — all in under ten minutes.
+
+<Note>
+  **Prerequisites before you begin:**
+
+  * **Node.js 20 or later** — check with `node --version`.
+  * **A Hedera testnet ECDSA account** — create one for free at [portal.hedera.com](https://portal.hedera.com). You will use this as the seller account; the buyer sub-account is created automatically.
+  * **An LLM API key (optional)** — Groq (`GROQ_API_KEY`) or Anthropic (`ANTHROPIC_API_KEY`). If you skip this, set `LLM_PROVIDER=mock` and the seller will return synthetic responses at no cost to you.
+</Note>
+
+<Steps>
+  <Step title="Clone the repository and install dependencies">
+    Clone the Agora402 repository and install all workspace packages with a single `npm install`.
+
+    ```bash
+    git clone https://github.com/ddpateltp/agora402.git
+    cd agora402
+    npm install
+    ```
+  </Step>
+
+  <Step title="Copy the example environment file and fill in your credentials">
+    Copy `.env.example` to `.env`, then open it in your editor. Fill in the two required seller fields using the account ID and private key from [portal.hedera.com](https://portal.hedera.com). Leave the `BUYER_*` fields blank — the next step fills those in automatically.
+
+    ```bash
+    cp .env.example .env
+    ```
+
+    ```ini .env
+    HEDERA_NETWORK=testnet
+
+    # Paste from portal.hedera.com → your ECDSA testnet account
+    SELLER_ACCOUNT_ID=0.0.xxxxx
+    SELLER_PRIVATE_KEY=0x...
+
+    # Blocky402 hosted testnet facilitator — no API key needed
+    FACILITATOR_URL=https://api.testnet.blocky402.com
+
+    # LLM provider: groq | anthropic | mock
+    LLM_PROVIDER=groq
+    GROQ_API_KEY=gsk_...
+    ```
+
+    <Tip>
+      If you do not have a Groq or Anthropic API key, set `LLM_PROVIDER=mock` in your `.env`. The seller will return a plausible synthetic response for every inference request so you can test the full payment flow without an LLM subscription.
+    </Tip>
+  </Step>
+
+  <Step title="Build the project and run the test suite">
+    Compile all TypeScript packages and run the 27-test suite. The tests exercise the full x402 client/server code path with a fake facilitator and a stubbed mirror node, so no network connection is needed.
+
+    ```bash
+    npm run build
+    npm test
+    ```
+
+    You should see output similar to:
+
+    ```
+    ✓ packages/shared/src/pricing.test.ts (8 tests)
+    ✓ packages/registry/src/receipts.test.ts (6 tests)
+    ✓ packages/buyer/src/agent.test.ts (13 tests)
+
+    Test Files  3 passed (3)
+         Tests  27 passed (27)
+    ```
+  </Step>
+
+  <Step title="Create the buyer account">
+    Run the buyer setup script. It creates a new Hedera account funded with 100 HBAR from your seller account, and writes `BUYER_ACCOUNT_ID` and `BUYER_PRIVATE_KEY` into your `.env` automatically.
+
+    ```bash
+    npm run setup:buyer
+    ```
+
+    ```
+    ✔ Created buyer account 0.0.yyyyy
+    ✔ Funded with 100 HBAR from seller 0.0.xxxxx
+    ✔ Written BUYER_ACCOUNT_ID and BUYER_PRIVATE_KEY to .env
+    ```
+  </Step>
+
+  <Step title="Create the HCS topics">
+    Create the two HCS topics — one for the service registry and one for payment receipts. The script writes `REGISTRY_TOPIC_ID` and `RECEIPTS_TOPIC_ID` into your `.env`.
+
+    ```bash
+    npm run setup:topics
+    ```
+
+    ```
+    ✔ Registry topic  0.0.11111  https://hashscan.io/testnet/topic/0.0.11111
+    ✔ Receipts topic  0.0.22222  https://hashscan.io/testnet/topic/0.0.22222
+    ✔ Written REGISTRY_TOPIC_ID and RECEIPTS_TOPIC_ID to .env
+    ```
+
+    <Note>
+      Optionally, run `npm run setup:token` to create a TOLL HTS settlement token with a custom fixed fee. If you skip this step, all payments use native HBAR (asset `0.0.0`), which is the default.
+    </Note>
+  </Step>
+
+  <Step title="Start the seller service">
+    Start the seller Express service. It binds to port 4402 and exposes the `POST /v1/infer` and `GET /v1/rates/hbar` endpoints behind the x402 payment middleware, plus the `/a2a/quote` negotiation endpoint.
+
+    ```bash
+    npm run seller
+    ```
+
+    ```
+    [seller] identity  uaid:aid:3vKq...;uid=agora-seller-1;registry=agora402;proto=a2a;nativeId=hedera:testnet:0.0.xxxxx
+    [seller] listening on http://localhost:4402
+    [seller] facilitator https://api.testnet.blocky402.com — supported ✔
+    ```
+
+    Leave this terminal running and open a new one for the next steps.
+  </Step>
+
+  <Step title="Publish your listing to the registry">
+    Register your seller in the HCS registry topic. The script reads your running seller's manifest from `http://localhost:4402/.well-known/agora402.json` and publishes a signed `ServiceListing` message to the registry topic.
+
+    ```bash
+    npm run setup:register
+    ```
+
+    ```
+    ✔ Listing published to topic 0.0.11111
+      uaid    uaid:aid:3vKq...
+      payTo   0.0.xxxxx
+      endpoints  POST /v1/infer (per-token, HBAR)
+                 GET  /v1/rates/hbar (per-unit, HBAR)
+    ```
+  </Step>
+
+  <Step title="Run your first buyer commands">
+    Now try the buyer CLI. First, discover what services are available in the registry:
+
+    ```bash
+    npm run buyer -- discover
+    ```
+
+    ```
+    agora-seller-1  v1.0.0
+      uaid   uaid:aid:3vKq...;uid=agora-seller-1;registry=agora402;proto=a2a;nativeId=hedera:testnet:0.0.xxxxx
+      payTo  0.0.xxxxx
+      url    http://localhost:4402
+      quotes http://localhost:4402/a2a/quote
+      POST /v1/infer   Pay-per-token LLM inference (chat completion)
+          HBAR  {"kind":"per-token","base":"50000","inputPer1k":"10000","outputPer1k":"20000"}
+      GET  /v1/rates/hbar   Live HBAR/USD exchange rate from the Hedera network
+          HBAR  {"kind":"per-unit","unit":"query","amountPerUnit":"500000"}
+    ```
+
+    Then run an inference request. The `--counter 90` flag tells the buyer to offer 90% of the list price:
+
+    ```bash
+    npm run buyer -- infer "Explain x402 in one sentence" --counter 90 --budget 0.2
+    ```
+
+    You should see progress events followed by the response and a payment summary:
+
+    ```
+    12:04:15.221  discovering       reading registry topic 0.0.11111
+    12:04:15.891  discovered        1 seller(s) offer "infer" in HBAR
+    12:04:15.892  quoting           asking agora-seller-1 for a quote, offering at most 0.00054321 HBAR
+    12:04:16.103  quoted            agora-seller-1 quoted 0.00054321 HBAR (accepted our counter), valid 59s
+    12:04:16.104  requesting        POST /v1/infer at agora-seller-1
+    12:04:16.201  payment_required  seller asks 0.00054321 HBAR
+    12:04:16.202  paying            signing transfer of 0.00054321 HBAR to 0.0.xxxxx
+    12:04:16.340  paid              partially signed transaction attached, retrying request
+    12:04:17.812  settled           facilitator settled 0.00054321 HBAR in tx 0.0.xxxxx@1700000000.123456789
+    12:04:19.104  verified          mirror node confirms SUCCESS: seller credited 0.00054321 HBAR
+
+    x402 is a protocol standard that lets HTTP servers request micropayments
+    per request using a 402 status code, enabling machines to pay for services
+    automatically without subscriptions or API keys.
+
+    paid      0.00054321 HBAR  for 12 in / 38 out tokens
+    hashscan  https://hashscan.io/testnet/transaction/0.0.xxxxx@1700000000.123456789
+    session   spent 0.00054321 HBAR, remaining 0.19945679 HBAR
+    ```
+
+    Follow the HashScan link to view your settlement transaction on the Hedera testnet explorer.
+
+    You can also buy a single HBAR/USD rate quote from the seller's data feed:
+
+    ```bash
+    npm run buyer -- rate
+    ```
+
+    ```
+    HBAR/USD 0.08420  (rate file expires 2025-01-01T12:10:00.000Z)
+
+    paid      0.00500000 HBAR
+    hashscan  https://hashscan.io/testnet/transaction/0.0.xxxxx@1700000000.234567890
+    session   spent 0.01054321 HBAR, remaining 0.18945679 HBAR
+    ```
+
+    To audit all receipts written by the seller to the HCS receipts topic, run:
+
+    ```bash
+    npm run buyer -- receipts \
+      --topic <RECEIPTS_TOPIC_ID> \
+      --seller-account <SELLER_ACCOUNT_ID>
+    ```
+
+    ```
+    Receipts topic 0.0.22222  https://hashscan.io/testnet/topic/0.0.22222
+    OK   #1 0.0.xxxxx@1700000000.123456789  0.00054321 HBAR  0.0.yyyyy -> 0.0.xxxxx  /v1/infer
+    OK   #2 0.0.xxxxx@1700000000.234567890  0.00500000 HBAR  0.0.yyyyy -> 0.0.xxxxx  /v1/rates/hbar
+    2 receipt(s), 2 match the chain, total 0.00554321 HBAR
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  If you don't have a Groq or Anthropic API key, set `LLM_PROVIDER=mock` in your `.env` before starting the seller. Mock mode returns a plausible synthetic completion for every prompt, so you can exercise the full discovery → quote → pay → receipt flow without a real LLM.
+</Tip>

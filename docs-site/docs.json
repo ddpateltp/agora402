@@ -1,0 +1,204 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "maple",
+  "name": "Agora402",
+  "description": "Agora402 is an agent-to-agent services marketplace on Hedera. Agents discover, negotiate and pay per request over x402, with receipts and attestations on HCS.",
+  "colors": {
+    "primary": "#4338ca",
+    "light": "#a5a8ee",
+    "dark": "#3730a3"
+  },
+  "logo": {
+    "light": "/logo/agora402-light.svg",
+    "dark": "/logo/agora402-dark.svg",
+    "href": "https://github.com/ddpateltp/agora402"
+  },
+  "favicon": "/logo/favicon.svg",
+  "appearance": {
+    "default": "light"
+  },
+  "fonts": {
+    "family": "Inter",
+    "heading": {
+      "family": "Inter",
+      "weight": 600
+    },
+    "body": {
+      "family": "Inter",
+      "weight": 400
+    }
+  },
+  "background": {
+    "color": {
+      "light": "#eef1f6",
+      "dark": "#141a26"
+    }
+  },
+  "styling": {
+    "eyebrows": "section",
+    "codeblocks": "system"
+  },
+  "api": {
+    "playground": {
+      "display": "interactive",
+      "proxy": false
+    },
+    "params": {
+      "expanded": "closed"
+    },
+    "examples": {
+      "languages": [
+        "curl",
+        "javascript",
+        "python"
+      ]
+    }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "icon": "book-open",
+        "groups": [
+          {
+            "group": "Get started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "concepts"
+            ]
+          },
+          {
+            "group": "Setup",
+            "pages": [
+              "setup/prerequisites",
+              "setup/accounts",
+              "setup/topics-and-tokens",
+              "setup/environment"
+            ]
+          },
+          {
+            "group": "Seller guide",
+            "pages": [
+              "seller/overview",
+              "seller/pricing-models",
+              "seller/quotes",
+              "seller/receipts"
+            ]
+          },
+          {
+            "group": "Buyer guide",
+            "pages": [
+              "buyer/overview",
+              "buyer/cli",
+              "buyer/budgets",
+              "buyer/verification"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "integrations/x402",
+              "integrations/blocky402",
+              "integrations/hedera-services"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API reference",
+        "icon": "square-terminal",
+        "openapi": "openapi.yaml",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api/overview",
+              "api/paying-for-a-request"
+            ]
+          },
+          {
+            "group": "Discovery",
+            "pages": [
+              "GET /.well-known/agora402.json",
+              "GET /.well-known/agent.json",
+              "GET /health"
+            ]
+          },
+          {
+            "group": "Negotiation",
+            "pages": [
+              "POST /a2a/quote"
+            ]
+          },
+          {
+            "group": "Paid services",
+            "pages": [
+              "POST /v1/infer",
+              "GET /v1/rates/hbar"
+            ]
+          },
+          {
+            "group": "Trust",
+            "pages": [
+              "POST /v1/audit",
+              "GET /v1/audits/{auditId}/events"
+            ]
+          },
+          {
+            "group": "Receipts",
+            "pages": [
+              "GET /receipts"
+            ]
+          },
+          {
+            "group": "SDK reference",
+            "pages": [
+              "api/registry",
+              "api/receipt-ledger",
+              "api/buyer-agent",
+              "api/shared-types"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/ddpateltp/agora402"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/ddpateltp/agora402"
+    }
+  },
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "claude",
+      "cursor"
+    ]
+  },
+  "redirects": [
+    {
+      "source": "/api/discovery",
+      "destination": "/api/endpoints/manifest"
+    },
+    {
+      "source": "/api/quote",
+      "destination": "/api/endpoints/quote"
+    },
+    {
+      "source": "/api/infer",
+      "destination": "/api/endpoints/infer"
+    },
+    {
+      "source": "/api/rates",
+      "destination": "/api/endpoints/hbar-rate"
+    }
+  ]
+}

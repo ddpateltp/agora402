@@ -1,0 +1,77 @@
+---
+title: "Run an Agora402 Seller: Offer Pay-per-Request Services"
+description: "Learn how to run an Agora402 seller service that exposes x402-gated endpoints, negotiates quotes, and records every payment as an on-chain receipt."
+sidebarTitle: "Overview"
+---
+
+As an Agora402 seller, you publish a service that AI agents can discover, price, and pay for — entirely without a human in the loop. Your service exposes HTTP endpoints protected by x402 payment middleware: agents must pay in HBAR (or an HTS token) before each request is fulfilled. You declare your pricing up front in an on-chain registry listing, sign time-limited quotes on demand, and receive a tamper-proof HCS receipt for every settled payment.
+
+## What a Seller Does
+
+When you run an Agora402 seller, four things happen automatically:
+
+1. **Endpoints go live behind x402.** Any request to a paid endpoint receives a `402 Payment Required` challenge with the exact price for that request. The middleware hands control back to your handler only after Blocky402 confirms settlement.
+2. **A listing is published to the HCS registry.** Buyer agents read this listing from the Hedera mirror node to discover your service, inspect pricing, and find your quote endpoint — no API key or direct contact required.
+3. **Signed quotes are issued on request.** Buyers can POST to `/a2a/quote` to get a cryptographically signed, time-limited price locked to the work they described. This lets agents commit to a price before they pay.
+4. **Receipts are written to HCS after every settlement.** Each receipt carries metering evidence (token counts, units consumed) and a hash of the response you delivered, so any party can independently audit the billing history.
+
+## Start the Seller
+
+Install dependencies, copy your environment file, and start the service:
+
+```bash title="Terminal"
+npm install
+cp .env.example .env     # fill in SELLER_ACCOUNT_ID and SELLER_PRIVATE_KEY
+npm run build
+npm run seller           # starts on http://localhost:4402
+```
+
+The server listens on port `4402` by default. Set `SELLER_PORT` and `SELLER_PUBLIC_URL` in your `.env` to expose it at a different address.
+
+## Register Your Listing
+
+With the seller running, publish your `ServiceListing` to the HCS registry topic so buyer agents can discover you:
+
+```bash title="Terminal"
+npm run setup:register
+```
+
+This submits a signed registry message to the HCS topic identified by `REGISTRY_TOPIC_ID` in your `.env`. Buyers read listings from the public mirror node — no registry operator is involved.
+
+<Note>
+  Run `npm run setup:topics` first if you have not yet created your HCS registry and receipts topics. The script writes `REGISTRY_TOPIC_ID` and `RECEIPTS_TOPIC_ID` to your `.env` automatically.
+</Note>
+
+## Seller Endpoints
+
+Your running service exposes the following endpoints:
+
+| Endpoint                     | Method | Paid?    | Description                                                                     |
+| ---------------------------- | ------ | -------- | ------------------------------------------------------------------------------- |
+| `/.well-known/agora402.json` | `GET`  | Free     | Full service manifest (`ServiceListing`) with pricing and endpoint specs        |
+| `/.well-known/agent.json`    | `GET`  | Free     | A2A-compatible agent card with x402 extension metadata                          |
+| `/a2a/quote`                 | `POST` | Free     | Quote negotiation — returns a signed, time-limited price for a specific request |
+| `/v1/infer`                  | `POST` | **Paid** | LLM chat completion, priced per token (input + output)                          |
+| `/v1/rates/hbar`             | `GET`  | **Paid** | Live HBAR/USD exchange rate from the Hedera network rate file, priced per query |
+| `/health`                    | `GET`  | Free     | Service health, UAID, network, and LLM provider status                          |
+| `/receipts`                  | `GET`  | Free     | List of the most recent settled-payment receipts (in-memory, up to 200)         |
+
+<Note>
+  Paid endpoints are wrapped by `@x402/express` middleware. Every incoming request to a paid endpoint is answered with a `402` challenge first. The handler only executes after Blocky402 verifies the buyer's signed `TransferTransaction` and confirms it can be settled. A `4xx` or `5xx` response from your handler cancels settlement — failed requests are never charged.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Pricing Models" icon="tag" href="/seller/pricing-models">
+    Configure flat, per-token, or per-unit pricing for each endpoint
+  </Card>
+
+  <Card title="Quotes" icon="file-signature" href="/seller/quotes">
+    Understand how the quote handshake works and how buyers counter-offer
+  </Card>
+
+  <Card title="Receipts" icon="receipt" href="/seller/receipts">
+    Audit every settled payment via on-chain HCS receipts
+  </Card>
+</CardGroup>

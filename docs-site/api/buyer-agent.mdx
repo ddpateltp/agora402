@@ -1,0 +1,308 @@
+---
+title: "BuyerAgent SDK Reference: Discover, Quote, and Pay"
+description: "Full SDK reference for the BuyerAgent class. Covers constructor options, discovery, quote negotiation, payment execution, and on-chain verification."
+sidebarTitle: "BuyerAgent"
+---
+
+`BuyerAgent` is the primary client class for buying services on Agora402. It handles the complete transaction lifecycle — finding sellers in the on-chain registry, negotiating a price through the quote handshake, executing the x402 payment inline with the HTTP request, and confirming the settlement on the Hedera mirror node. Your agent never needs an API key for any seller: payment is the access credential.
+
+## Installation and Import
+
+```typescript
+import { BuyerAgent } from '@agora402/buyer';
+```
+
+## Constructor
+
+```typescript
+const agent = new BuyerAgent({
+  network: 'testnet',
+  accountId: '0.0.12345',
+  privateKey: process.env.HEDERA_PRIVATE_KEY!,
+  maxPerCall: 5_000_000n,      // 0.05 HBAR per request
+  sessionBudget: 50_000_000n,  // 0.5 HBAR total
+});
+```
+
+### `BuyerAgentOptions`
+
+<ParamField path="network" type="'testnet' | 'mainnet'" required>
+  The Hedera network to operate on. All registry reads, payments, and mirror-node verifications target this network.
+</ParamField>
+
+<ParamField path="accountId" type="string" required>
+  Your Hedera account ID in `shard.realm.num` format, e.g. `'0.0.12345'`. This is the account that pays for services and is encoded in your agent's UAID.
+</ParamField>
+
+<ParamField path="privateKey" type="string" required>
+  Your ECDSA private key as a hex string. Used to sign x402 payment transactions. Never log or expose this value.
+</ParamField>
+
+<ParamField path="name" type="string">
+  An optional display name for your agent. Used during UAID generation. Defaults to `'agora-buyer'`.
+</ParamField>
+
+<ParamField path="maxPerCall" type="bigint" required>
+  A hard cap on the amount your agent will pay in a single x402 transaction, expressed in atomic units of your chosen asset (tinybars for HBAR). Any payment requirement above this value is rejected automatically by the x402 spend-control layer.
+</ParamField>
+
+<ParamField path="sessionBudget" type="bigint" required>
+  The total amount your agent may spend across all calls in this session. Once `totalSpent` reaches this limit, any further payment requirements are filtered out and the agent emits a `'failed'` event. Atomic units of the chosen asset.
+</ParamField>
+
+<ParamField path="asset" type="string">
+  The asset ID to use for all payments. `'0.0.0'` for native HBAR (the default). Set to an HTS token ID (e.g. `'0.0.4567'`) to pay with a TOLL token.
+</ParamField>
+
+<ParamField path="registry" type="Registry">
+  An initialised `Registry` instance used for service discovery. When omitted, `discover()` returns an empty list unless you pass a `sellerUrl` directly. You typically pass this when you want the agent to search the on-chain directory automatically.
+</ParamField>
+
+<ParamField path="verifyQuoteSigner" type="boolean">
+  When `true`, the agent makes one additional mirror-node call after receiving a quote to confirm that the quote's signing key belongs to the seller's `payTo` account. Adds latency but provides protection against quote-signing key substitution. Defaults to `false`.
+</ParamField>
+
+<ParamField path="onEvent" type="(e: AgentEvent) => void">
+  Optional callback invoked at every lifecycle stage. Use this to drive progress UI, structured logging, or spend monitoring. See the [AgentEvent stages](#agentevent-stages) table below.
+</ParamField>
+
+## Properties
+
+| Property     | Type     | Description                                                                                    |
+| ------------ | -------- | ---------------------------------------------------------------------------------------------- |
+| `uaid`       | `string` | Your agent's deterministic HCS-14 UAID, derived from `network`, `accountId`, and `name`.       |
+| `asset`      | `string` | The asset ID in use (`'0.0.0'` for HBAR or an HTS token ID).                                   |
+| `remaining`  | `bigint` | How much of `sessionBudget` has not yet been spent. Updates after every successful settlement. |
+| `totalSpent` | `bigint` | Cumulative amount spent this session in atomic units.                                          |
+
+## Methods
+
+### `discover(endpointId, sellerUrl?)`
+
+```typescript
+await agent.discover('infer'): Promise<Offer[]>
+await agent.discover('infer', 'http://localhost:4402'): Promise<Offer[]>
+```
+
+Finds sellers that offer the given endpoint accepting your configured asset. When `sellerUrl` is provided, the agent fetches that seller's manifest directly from `<sellerUrl>/.well-known/agora402.json` and bypasses the registry. When `sellerUrl` is omitted, the agent reads all active listings from the `Registry` instance you passed in the constructor.
+
+Returns an array of `Offer` objects. Each offer bundles the `ServiceListing`, the matching `EndpointSpec`, and the `PaymentOptionSpec` for your asset. The `listPrice` field is set to `0n` at this stage — call `rank()` to compute prices.
+
+<ParamField path="endpointId" type="string" required>
+  The endpoint identifier to search for, e.g. `'infer'` or `'hbar-rate'`.
+</ParamField>
+
+<ParamField path="sellerUrl" type="string">
+  Optional base URL of a specific seller. Skips the registry and reads the seller's manifest directly. Useful for testing or when you already know which seller you want to use.
+</ParamField>
+
+***
+
+### `rank(offers, estimate)`
+
+```typescript
+agent.rank(offers, { inputTokens: 120, maxOutputTokens: 256 }): Offer[]
+```
+
+Prices each offer by running `priceFor()` against the offer's published pricing model and the provided work estimate, then sorts the results cheapest first. Returns a new array of `Offer` objects with `listPrice` populated.
+
+<ParamField path="offers" type="Offer[]" required>
+  The array returned by `discover()`.
+</ParamField>
+
+<ParamField path="estimate" type="WorkEstimate" required>
+  Your expected work size. Shape depends on the pricing model: use `inputTokens` and `maxOutputTokens` for `per-token` services, or `units` for `per-unit` services.
+</ParamField>
+
+***
+
+### `quote(offer, estimate, maxAmount?)`
+
+```typescript
+await agent.quote(offer, estimate, 9_000_000n): Promise<Quote | null>
+```
+
+Sends a `QuoteRequest` to the seller's `/a2a/quote` endpoint and waits for a signed `Quote` in response. The agent verifies the quote's ECDSA signature and checks that the quote's `seller` field matches the listing's UAID. If `verifyQuoteSigner` is enabled, it also confirms the signing key controls the `payTo` account on the mirror node.
+
+Returns the parsed `Quote` on success, or `null` if the seller rejected your `maxAmount` counter (HTTP 409). In the rejection case, the agent fires a `'quote_rejected'` event with the seller's floor price.
+
+<ParamField path="offer" type="Offer" required>
+  An offer from `discover()` or `rank()`.
+</ParamField>
+
+<ParamField path="estimate" type="WorkEstimate" required>
+  Work estimate echoed to the seller so it can compute a consistent price.
+</ParamField>
+
+<ParamField path="maxAmount" type="bigint">
+  Your ceiling price in atomic units. When this is below the seller's list price, you are counter-offering. The seller may accept (returns a quote at your price), reject (returns 409), or accept partially (returns a quote between your counter and its list price).
+</ParamField>
+
+***
+
+### `call(offer, init, quote?)`
+
+```typescript
+await agent.call<ChatCompletion>(offer, { body }, quote): Promise<PaidResult<ChatCompletion>>
+```
+
+Executes a paid HTTP request to the seller. The agent sends the request, handles the 402 challenge automatically (attaches the signed x402 payment and retries), then verifies the settlement on the mirror node via `verifyOnChain()`.
+
+<ParamField path="offer" type="Offer" required>
+  The offer describing the endpoint to call.
+</ParamField>
+
+<ParamField path="init" type="object" required>
+  Request initialisation. Supports `body` (any JSON-serialisable value), `method` (defaults to the endpoint's declared method), and `query` (key-value pairs appended to the URL as query parameters).
+</ParamField>
+
+<ParamField path="quote" type="Quote | null">
+  An optional pre-negotiated quote. When provided, the `quoteId` is included in the request body (POST) or as a query parameter (GET) so the seller can match the agreed price.
+</ParamField>
+
+The returned `PaidResult<T>` contains:
+
+<ResponseField name="status" type="number">
+  HTTP status code of the final response.
+</ResponseField>
+
+<ResponseField name="body" type="T">
+  Parsed response body. JSON responses are parsed automatically; plain-text responses are returned as strings.
+</ResponseField>
+
+<ResponseField name="settlement" type="SettleResponse | null">
+  The x402 settlement confirmation from the facilitator. Contains the `transaction` ID and `amount` actually charged.
+</ResponseField>
+
+<ResponseField name="amount" type="bigint | null">
+  The amount paid in atomic units, or `null` if no payment was made (e.g. a non-402 error).
+</ResponseField>
+
+<ResponseField name="asset" type="string | null">
+  The asset ID used for payment, or `null` if no payment was made.
+</ResponseField>
+
+<ResponseField name="hashscanUrl" type="string | null">
+  A HashScan link for the settlement transaction, or `null` if no payment was made.
+</ResponseField>
+
+<ResponseField name="onChain" type="MirrorTransaction | null">
+  The mirror-node transaction record returned by `verifyOnChain()`, or `null` if verification timed out.
+</ResponseField>
+
+***
+
+### `infer(prompt, options?)`
+
+```typescript
+await agent.infer('Explain x402', { maxTokens: 256, counterBps: 9000 }):
+  Promise<PaidResult<ChatCompletion> & { offer: Offer }>
+```
+
+High-level convenience method: runs the full discover → rank → quote → call pipeline for an OpenAI-style chat completion. Picks the cheapest available seller automatically.
+
+<ParamField path="prompt" type="string" required>
+  The user message to send to the AI seller.
+</ParamField>
+
+<ParamField path="options.sellerUrl" type="string">
+  Pin to a specific seller URL instead of using the registry.
+</ParamField>
+
+<ParamField path="options.maxTokens" type="number">
+  Maximum output tokens to request. Defaults to `256`. Also used to estimate the price before quoting.
+</ParamField>
+
+<ParamField path="options.counterBps" type="number">
+  Counter-offer in basis points of list price (e.g. `9000` = offer 90%). Omit to accept list price.
+</ParamField>
+
+<ParamField path="options.system" type="string">
+  Optional system message prepended to the conversation.
+</ParamField>
+
+Returns `PaidResult<ChatCompletion> & { offer: Offer }`, where `offer` is the seller that was selected.
+
+***
+
+### `hbarRate(options?)`
+
+```typescript
+await agent.hbarRate(): Promise<PaidResult<Record<string, unknown>> & { offer: Offer }>
+```
+
+High-level convenience method for buying one HBAR/USD price quote. Runs discover → rank → quote → call for the `'hbar-rate'` endpoint. Returns the seller's response alongside the usual `PaidResult` fields and the selected `offer`.
+
+<ParamField path="options.sellerUrl" type="string">
+  Pin to a specific seller URL.
+</ParamField>
+
+***
+
+### `verifyOnChain(transactionId, payTo)`
+
+```typescript
+await agent.verifyOnChain('0.0.12345@1700000000.123456789', '0.0.54321'):
+  Promise<MirrorTransaction | null>
+```
+
+Polls the Hedera mirror node for the given transaction ID, retrying up to 10 times with a 1.5-second delay between attempts. Once the transaction is found, the agent emits a `'verified'` event with the confirmed credit amount. Returns the `MirrorTransaction` object or `null` if the transaction does not appear within the retry window.
+
+<ParamField path="transactionId" type="string" required>
+  The Hedera transaction ID in `shard.realm.num@seconds.nanoseconds` format, as returned in `settlement.transaction`.
+</ParamField>
+
+<ParamField path="payTo" type="string" required>
+  The seller's receiving account ID. The method logs how much was credited to this account.
+</ParamField>
+
+<Note>
+  `verifyOnChain()` is called automatically at the end of every successful `call()`. You only need to call it manually if you want to re-verify a transaction from a previous session.
+</Note>
+
+## `AgentEvent` Stages
+
+The `onEvent` callback receives an `AgentEvent` with a `stage` field at every step of the lifecycle. Use these to build progress indicators or structured audit logs.
+
+| Stage              | Fired when                                                                                  |
+| ------------------ | ------------------------------------------------------------------------------------------- |
+| `discovering`      | `discover()` starts reading the registry or a seller manifest.                              |
+| `discovered`       | `discover()` completes. `data.sellers` lists the names of matching sellers.                 |
+| `quoting`          | A quote request is about to be sent to a seller.                                            |
+| `quoted`           | A valid quote was received and verified. `data.amount` is the agreed price.                 |
+| `quote_rejected`   | The seller rejected your `maxAmount` counter (HTTP 409).                                    |
+| `requesting`       | The paid HTTP request is being sent for the first time.                                     |
+| `payment_required` | The seller responded with HTTP 402. `data.accepts` lists the payment options.               |
+| `paying`           | The x402 client is signing the payment transaction. `data.amount` and `data.payTo` are set. |
+| `paid`             | The signed payment was attached; the request is being retried with the payment header.      |
+| `settled`          | The facilitator confirmed settlement. `data.transaction` is the Hedera transaction ID.      |
+| `verifying`        | `verifyOnChain()` is polling the mirror node for the settlement transaction.                |
+| `verified`         | The mirror node confirmed the transaction result and credit amount.                         |
+| `failed`           | An unrecoverable error occurred, or the session budget was exhausted.                       |
+
+<Tip>
+  Subscribe to `onEvent` during development to trace every stage in real time. In production, use it to emit structured log entries or to update a UI spend meter.
+</Tip>
+
+## Example: Logging All Events
+
+```typescript
+const agent = new BuyerAgent({
+  network: 'testnet',
+  accountId: process.env.HEDERA_ACCOUNT_ID!,
+  privateKey: process.env.HEDERA_PRIVATE_KEY!,
+  maxPerCall: 5_000_000n,
+  sessionBudget: 100_000_000n,
+  registry,
+  onEvent: (e) => console.log(`[${e.stage}] ${e.message}`),
+});
+
+const result = await agent.infer('What is the x402 protocol?', {
+  maxTokens: 512,
+  counterBps: 9500,
+});
+
+console.log(result.body.choices[0].message.content);
+console.log('Paid:', result.amount, result.asset);
+console.log('HashScan:', result.hashscanUrl);
+```

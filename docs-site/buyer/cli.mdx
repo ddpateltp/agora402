@@ -1,0 +1,185 @@
+---
+title: "Agora402 CLI Reference: discover, infer, rate, receipts"
+description: "Complete reference for the agora CLI. Run agora discover, agora infer, agora rate, and agora receipts to interact with sellers from the command line."
+sidebarTitle: "CLI"
+---
+
+The `agora` CLI lets you interact with Agora402 sellers directly from your terminal — no code required. Run any command via `npm run buyer -- <command>` from the repository root. It reads your buyer credentials and network settings from your `.env` file automatically, so all you need to provide are the command-specific flags. Pass `--json` to any command to receive machine-readable output suitable for piping into scripts or other tools.
+
+<Tabs>
+  <Tab title="discover">
+    ## `agora discover`
+
+    ```
+    agora discover [--seller <url>] [--json]
+    ```
+
+    Lists every seller registered on the HCS registry, or a single seller if you pass `--seller`. For each seller, the command prints the name, version, UAID, `payTo` account, base URL, quotes endpoint path, and every endpoint with its accepted assets and pricing model.
+
+    **Options**
+
+    | Flag             | Description                                                                                          |
+    | ---------------- | ---------------------------------------------------------------------------------------------------- |
+    | `--seller <url>` | Skip the registry and read directly from one seller's manifest at `<url>/.well-known/agora402.json`. |
+    | `--json`         | Print the full listing array as JSON instead of formatted text.                                      |
+
+    **Example**
+
+    ```bash
+    npm run buyer -- discover
+    ```
+
+    ```
+    agora-seller-1  v1.0.0
+      uaid   uaid:aid:Abc123...;uid=agora-seller-1;registry=agora402;proto=a2a;nativeId=hedera:testnet:0.0.4567890
+      payTo  0.0.4567890
+      url    http://localhost:4402
+      quotes http://localhost:4402/a2a/quote
+
+      POST /v1/infer  LLM chat completion, metered per token
+          HBAR  {"kind":"per-token","base":"500000","inputPer1k":"200000","outputPer1k":"400000"}
+          TOLL  {"kind":"per-token","base":"5","inputPer1k":"2","outputPer1k":"4"}
+
+      GET  /v1/rates/hbar  Live HBAR/USD exchange rate
+          HBAR  {"kind":"flat","amount":"1000000"}
+    ```
+
+    <Tip>
+      Use `--seller http://localhost:4402` during development to bypass the registry and talk directly to a locally running seller. This is useful before you have published a listing to a registry topic.
+    </Tip>
+  </Tab>
+
+  <Tab title="infer">
+    ## `agora infer`
+
+    ```
+    agora infer "<prompt>" [--seller <url>] [--max-tokens N] [--counter <percent>] [--budget <HBAR>] [--max-call <HBAR>] [--json]
+    ```
+
+    Buys one LLM chat completion. The agent discovers sellers from the registry (or a single seller with `--seller`), ranks them by price for your request, negotiates a signed quote, pays via x402, prints the model's response, and shows a summary line with the amount paid and a HashScan link.
+
+    **Options**
+
+    | Flag                  | Default  | Description                                                                                                                                          |
+    | --------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+    | `--seller <url>`      | registry | Target one seller directly instead of reading the registry.                                                                                          |
+    | `--max-tokens N`      | `400`    | Maximum output tokens to budget. This affects the quoted price for `per-token` pricing models.                                                       |
+    | `--counter <percent>` | `100`    | Offer this percentage of the list price when negotiating. For example, `90` means offer 90% of list. The seller may reject counters below its floor. |
+    | `--budget <HBAR>`     | `0.5`    | Session spending cap in HBAR for this CLI invocation.                                                                                                |
+    | `--max-call <HBAR>`   | `0.05`   | Per-call cap in HBAR. Any single `402` above this is rejected before signing.                                                                        |
+    | `--json`              | —        | Print a machine-readable JSON object instead of formatted text.                                                                                      |
+
+    **Example**
+
+    ```bash
+    npm run buyer -- infer "Explain x402 in one sentence" --counter 90 --budget 0.2
+    ```
+
+    ```
+    10:42:31.004  discovering       reading registry topic 0.0.4567890
+    10:42:31.891  discovered        1 seller(s) offer "infer" in HBAR
+    10:42:31.892  quoting           asking agora-seller-1 for a quote, offering at most 0.009 HBAR
+    10:42:32.101  quoted            agora-seller-1 quoted 0.009 HBAR (accepted our counter), valid 58s
+    10:42:32.102  requesting        POST /v1/infer at agora-seller-1
+    10:42:32.340  payment_required  seller asks 0.009 HBAR
+    10:42:32.341  paying            signing transfer of 0.009 HBAR to 0.0.4567890
+    10:42:32.360  paid              partially signed transaction attached, retrying request
+    10:42:33.210  settled           facilitator settled 0.009 HBAR in tx 0.0.12345@1750000000.123456789
+    10:42:33.211  verifying         looking up 0.0.12345@1750000000.123456789 on the mirror node
+    10:42:34.902  verified          mirror node confirms SUCCESS: seller credited 0.009 HBAR at 1750000000.223456789
+
+    x402 is a protocol where an HTTP server returns 402 Payment Required with exact payment
+    details, and the client pays inline before the request is fulfilled — no subscriptions,
+    no API keys, just machine-speed money.
+
+    paid      0.00900000 HBAR  for 24 in / 22 out tokens
+    hashscan  https://hashscan.io/testnet/transaction/0.0.12345@1750000000.123456789
+    session   spent 0.00900000 HBAR, remaining 0.19100000 HBAR
+    ```
+
+    <Note>
+      Event lines are written to `stderr`; only the model response and the summary lines go to `stdout`. This means you can pipe the response body without filtering event noise: `npm run buyer -- infer "…" 2>/dev/null`.
+    </Note>
+  </Tab>
+
+  <Tab title="rate">
+    ## `agora rate`
+
+    ```
+    agora rate [--seller <url>] [--json]
+    ```
+
+    Buys one HBAR/USD exchange rate query from the cheapest available seller. The seller returns the current price and an expiration timestamp sourced from the Hedera mirror node's live rate file. This is the simplest way to confirm that your buyer setup is working end-to-end.
+
+    **Options**
+
+    | Flag             | Description                                                     |
+    | ---------------- | --------------------------------------------------------------- |
+    | `--seller <url>` | Target one seller directly instead of reading the registry.     |
+    | `--json`         | Print a machine-readable JSON object instead of formatted text. |
+
+    **Example**
+
+    ```bash
+    npm run buyer -- rate
+    ```
+
+    ```
+    10:43:15.002  discovering       reading registry topic 0.0.4567890
+    10:43:15.788  discovered        1 seller(s) offer "hbar-rate" in HBAR
+    10:43:15.789  quoting           asking agora-seller-1 for a quote
+    10:43:15.921  quoted            agora-seller-1 quoted 0.01 HBAR, valid 59s
+    10:43:15.922  requesting        GET /v1/rates/hbar at agora-seller-1
+    10:43:15.990  payment_required  seller asks 0.01 HBAR
+    10:43:15.991  paying            signing transfer of 0.01 HBAR to 0.0.4567890
+    10:43:16.009  paid              partially signed transaction attached, retrying request
+    10:43:16.440  settled           facilitator settled 0.01 HBAR in tx 0.0.12345@1750000100.987654321
+    10:43:16.441  verifying         looking up 0.0.12345@1750000100.987654321 on the mirror node
+    10:43:18.002  verified          mirror node confirms SUCCESS: seller credited 0.01 HBAR at 1750000101.087654321
+
+    HBAR/USD 0.07142  (rate file expires 2025-06-16T10:45:00Z)
+
+    paid      0.01000000 HBAR
+    hashscan  https://hashscan.io/testnet/transaction/0.0.12345@1750000100.987654321
+    session   spent 0.01000000 HBAR, remaining 0.49000000 HBAR
+    ```
+  </Tab>
+
+  <Tab title="receipts">
+    ## `agora receipts`
+
+    ```
+    agora receipts --topic <topicId> [--seller-account <0.0.x>] [--json]
+    ```
+
+    Audits a receipts HCS topic by reading every receipt message and cross-checking each one against the corresponding transaction on the Hedera mirror node. For each receipt, the command prints the sequence number, transaction id, amount, payer → payTo accounts, and the endpoint path that was paid for. Any receipt whose on-chain transfer does not match the recorded data is flagged `FAIL` with a description of the problem.
+
+    **Options**
+
+    | Flag                       | Required | Description                                                                                                                                      |
+    | -------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+    | `--topic <topicId>`        | ✅        | The HCS receipts topic id to audit, e.g. `0.0.4567891`.                                                                                          |
+    | `--seller-account <0.0.x>` | —        | When provided, flags any receipt whose HCS message was not submitted by this account. Use this to detect receipts written by unexpected parties. |
+    | `--json`                   | —        | Print the full audit array as JSON.                                                                                                              |
+
+    **Example**
+
+    ```bash
+    npm run buyer -- receipts --topic 0.0.4567891 --seller-account 0.0.4567890
+    ```
+
+    ```
+    Receipts topic 0.0.4567891  https://hashscan.io/testnet/topic/0.0.4567891
+
+    OK   #1  0.0.12345@1750000000.123456789  0.00900000 HBAR  0.0.12346 -> 0.0.4567890  /v1/infer
+    OK   #2  0.0.12345@1750000100.987654321  0.01000000 HBAR  0.0.12346 -> 0.0.4567890  /v1/rates/hbar
+    FAIL #3  0.0.12345@1750000200.111111111  0.00500000 HBAR  0.0.12346 -> 0.0.4567890  /v1/infer  amount mismatch: receipt says 500000 but chain shows 250000
+
+    3 receipt(s), 2 match the chain, total 0.01900000 HBAR
+    ```
+
+    <Warning>
+      A `FAIL` result means the receipt's recorded data does not match what settled on-chain. This could indicate a bug in the seller's receipt logic or, in adversarial scenarios, a tampered receipt. Always investigate `FAIL` lines before treating the total as authoritative.
+    </Warning>
+  </Tab>
+</Tabs>

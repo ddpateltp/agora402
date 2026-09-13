@@ -1,0 +1,140 @@
+---
+title: "Hedera Services: HCS, HTS, and the Hedera Mirror Node"
+description: "Agora402 uses HCS, HTS, and the Hedera mirror node. Understand how each service contributes to discovery, settlement, and the audit trail."
+sidebarTitle: "Hedera services"
+---
+
+Agora402 is built entirely on public Hedera infrastructure — no proprietary registry server, no centralized payment processor, no private database. Sellers publish their listings to the Hedera Consensus Service, payments settle as native Hedera transfers, and every receipt is permanently recorded on-chain. This page explains which Hedera services Agora402 uses and exactly what each one does in the system.
+
+## Hedera Consensus Service (HCS)
+
+HCS provides an ordered, tamper-evident log of messages anchored to Hedera consensus. Agora402 uses two HCS topics: one for the service registry, and one for payment receipts.
+
+### Registry Topic
+
+Sellers publish service listings to the registry topic by submitting an HCS message. The message body is a JSON envelope with `type: "listing"` containing the full `ServiceListing` object — endpoints, pricing models, payTo account, facilitator URL, and quote path. To delist, a seller submits a `type: "delist"` message with their UAID.
+
+```json title="Registry message envelope (listing)"
+{
+  "v": 1,
+  "type": "listing",
+  "listing": {
+    "uaid": "uaid:aid:...",
+    "name": "agora-seller-1",
+    "payTo": "0.0.12345",
+    "baseUrl": "https://my-seller.example.com",
+    "endpoints": [ ... ],
+    "publishedAt": "2025-01-01T00:00:00.000Z"
+  }
+}
+```
+
+```json title="Registry message envelope (delist)"
+{
+  "v": 1,
+  "type": "delist",
+  "uaid": "uaid:aid:...",
+  "reason": "service shutting down"
+}
+```
+
+There is no registry operator or admin. Trust is enforced by a single rule: **the HCS message must be paid for by the `payTo` account it names**. The buyer agent checks the HCS payer account for each listing it reads from the mirror node and discards any listing where the payer does not match the `payTo` field. This binds listings to accounts without any central authority — you cannot publish a listing that claims someone else's payment account.
+
+### Receipts Topic
+
+After every settled payment, the seller writes a receipt message to the receipts HCS topic. The receipt includes the Hedera transaction ID, payer, payTo, asset, amount, the endpoint path, optional token usage, and a SHA-256 hash of the response body.
+
+```json title="Receipt message on the receipts topic"
+{
+  "v": 1,
+  "type": "receipt",
+  "seller": "uaid:aid:...",
+  "transactionId": "0.0.12345@1700000000.000000001",
+  "network": "hedera:testnet",
+  "payer": "0.0.67890",
+  "payTo": "0.0.12345",
+  "asset": "0.0.0",
+  "amount": "50000",
+  "resource": "/v1/infer",
+  "quoteId": "q_abc123",
+  "usage": { "inputTokens": 42, "outputTokens": 18 },
+  "responseHash": "a3f2...",
+  "issuedAt": "2025-01-01T00:00:01.234Z"
+}
+```
+
+Run `agora receipts` to audit the topic: the CLI reads every receipt, looks up the corresponding transaction on the mirror node, recomputes the amounts, and flags any discrepancy.
+
+```bash title="Audit the receipts topic"
+agora receipts \
+  --topic <RECEIPTS_TOPIC_ID> \
+  --seller-account <SELLER_ACCOUNT_ID>
+```
+
+## Hedera Token Service (HTS)
+
+HTS enables custom fungible tokens on Hedera. Agora402 uses HTS optionally through the **TOLL token** — an alternative settlement asset you can create alongside native HBAR.
+
+### Default: Native HBAR
+
+Unless you create a TOLL token, all payments use native HBAR. In x402 terms, native HBAR is identified by asset ID `0.0.0` with 8 decimal places. All amounts in `PAYMENT-REQUIRED` headers, quotes, and receipts are expressed in **tinybars** (1 HBAR = 100,000,000 tinybars).
+
+### Optional: TOLL Token
+
+The TOLL token is an HTS fungible token created by `npm run setup:token`. It is configured with a custom fixed fee in its transfer path, which means every TOLL transfer automatically routes a portion to the fee collector. Both seller and buyer accounts must be associated with the TOLL token before it can be used for settlement.
+
+```bash title="Create and configure the TOLL token"
+npm run setup:token     # creates the token, associates buyer, writes TOLL_TOKEN_ID to .env
+```
+
+Once configured, the seller's endpoints advertise TOLL as an accepted `asset` alongside HBAR. The buyer agent selects the preferred asset with the `asset` option (set to the HTS token ID instead of `0.0.0`).
+
+<Note>
+  The TOLL token is optional. If `TOLL_TOKEN_ID` is empty in your `.env`, all endpoints accept only HBAR and the token setup scripts are not needed.
+</Note>
+
+## Hedera Accounts and Keys
+
+Agora402 requires **ECDSA accounts** — accounts backed by secp256k1 keys — for both sellers and buyers. ED25519 accounts are not supported because `@x402/hedera` constructs signatures over x402 payment payloads using the secp256k1 curve.
+
+### Seller Account
+
+The seller account (`SELLER_ACCOUNT_ID`) serves three purposes:
+
+* It is the `payTo` account that receives every payment transfer.
+* Its private key signs all HCS registry and receipt messages, establishing listing ownership.
+* Its private key signs quotes, allowing buyers to cryptographically verify that a quote came from the claimed seller.
+
+### Buyer Account
+
+The buyer account (`BUYER_ACCOUNT_ID`) is created by `npm run setup:buyer`, which transfers 100 HBAR from the seller account to fund it. The buyer's private key signs the `TransferTransaction` inside every `PAYMENT-SIGNATURE` header — it authorizes the debit from the buyer account to the seller.
+
+### Quote Signing
+
+When a buyer receives a quote from a seller, it verifies two things: the ECDSA signature over the canonical quote bytes, and — if `verifyQuoteSigner` is enabled — that the signing key is actually the key controlling the seller's `payTo` account (checked against the Hedera mirror node). This prevents a malicious actor from impersonating a seller with a fake quote.
+
+## Mirror Node
+
+All read operations in Agora402 go through the **free public Hedera mirror node** — no Hedera SDK account or operator key is needed for reads. The mirror node is the sole source of truth for discovery, verification, and audit.
+
+| Operation                 | What the mirror node provides                                                                               |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Registry reads            | All messages on the registry HCS topic; buyers replay the topic to build a current listing table            |
+| Quote signer verification | The key(s) associated with a Hedera account, used to confirm a quote signer controls the `payTo` account    |
+| Settlement verification   | The full transfer record for a transaction ID, including sender, receiver, amounts, and consensus timestamp |
+| Receipt audit             | Transaction details fetched for every receipt; amounts and parties are cross-checked against receipt fields |
+| HBAR/USD exchange rate    | The network's own exchange rate file, served as the paid `/v1/rates/hbar` data feed                         |
+
+```bash title="Mirror node base URLs"
+# Testnet
+https://testnet.mirrornode.hedera.com
+
+# Mainnet
+https://mainnet-public.mirrornode.hedera.com
+```
+
+After every settled payment the buyer agent polls the mirror node until the transaction is visible, then displays the confirmed amounts and a HashScan link. Consensus is typically sub-second; mirror node indexing adds a few seconds.
+
+<Tip>
+  Every transaction, HCS topic message, account, and token on Hedera is publicly visible at [hashscan.io](https://hashscan.io). Use HashScan to inspect your registry topic, browse receipts, or verify individual settlement transactions without writing any code. Switch between testnet and mainnet using the network selector in the top navigation.
+</Tip>

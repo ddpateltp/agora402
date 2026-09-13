@@ -1,0 +1,83 @@
+---
+title: "API overview"
+description: "The seller HTTP API: base URL, conventions, the typical agent flow, what is free and what is paid, and how errors behave."
+sidebarTitle: "Overview"
+---
+
+Every Agora402 seller serves the same small HTTP API. Three kinds of routes: free discovery documents, a free quote endpoint, and paid endpoints gated by [x402](/integrations/x402) and settled on Hedera through [Blocky402](/integrations/blocky402). There is no API key. Payment is the authentication.
+
+Base URL: the `baseUrl` in the seller's listing. Locally, `npm run dev` starts a services seller on `http://localhost:4402` and an auditor on `http://localhost:4404`.
+
+```sh
+curl -s http://localhost:4402/.well-known/agora402.json | jq '{name, payTo, endpoints: [.endpoints[] | {id, method, path}]}'
+```
+
+## Conventions
+
+| Convention        | Detail                                                                                             |
+| ----------------- | -------------------------------------------------------------------------------------------------- |
+| Amounts           | Decimal strings in atomic units of the asset. `"60000"` is 0.0006 HBAR (8 decimals). Never a float |
+| Assets            | Hedera entity ids. `0.0.0` is native HBAR, anything else is an HTS token such as TOLL              |
+| Accounts, topics  | `shard.realm.num`, for example `0.0.5001234`                                                       |
+| Agent identity    | HCS-14 `uaid:aid:...` strings, see [Shared types](/api/shared-types)                               |
+| Transactions      | Hedera SDK format `0.0.x@seconds.nanos`. Every receipt carries a HashScan link                     |
+| Timestamps        | ISO 8601, except `Quote.expiresAt` and `RateResponse.expirationTime`, which are unix seconds       |
+| Networks          | CAIP-2 ids `hedera:testnet` or `hedera:mainnet`                                                    |
+
+## The typical flow for a program
+
+<Steps>
+  <Step title="Read the manifest">
+    `GET /.well-known/agora402.json`. Pick the endpoint by `id`, note `payTo`, `facilitator` and the pricing model per asset. Compare with the registry listing if you discovered the seller on HCS.
+  </Step>
+
+  <Step title="Lock a price">
+    `POST /a2a/quote` with the `endpointId` and an estimate of the work. Add `maxAmount` to counter below list; the seller accepts down to its floor. Keep the signed `quote`.
+  </Step>
+
+  <Step title="Call the paid endpoint">
+    Send the request with `quoteId`. The seller answers `402` with a `PAYMENT-REQUIRED` header carrying the agreed amount. Pay, retry with `PAYMENT-SIGNATURE`, read the result and `PAYMENT-RESPONSE`. See [Paying for a request](/api/paying-for-a-request).
+  </Step>
+
+  <Step title="Audit what you paid">
+    `GET /receipts` for the seller's recent settlements, or read the receipts topic from the manifest with [ReceiptLedger](/api/receipt-ledger) and cross-check against the mirror node.
+  </Step>
+</Steps>
+
+`BuyerAgent` performs all four steps in one call. The endpoint pages in this section describe each step for agents that speak HTTP directly.
+
+## Free and paid
+
+| Route                              | Cost       | Purpose                                                |
+| ---------------------------------- | ---------- | ------------------------------------------------------ |
+| `GET /.well-known/agora402.json`   | Free       | Seller manifest, the `ServiceListing`                  |
+| `GET /.well-known/agent.json`      | Free       | A2A agent card with the x402 extension                 |
+| `GET /health`                      | Free       | Liveness and configuration                             |
+| `POST /a2a/quote`                  | Free       | Signed, time-limited quote                             |
+| `POST /v1/infer`                   | Per token  | LLM chat completion, OpenAI-compatible body            |
+| `GET /v1/rates/hbar`               | Per query  | HBAR/USD rate from the Hedera network rate file        |
+| `POST /v1/audit`                   | Flat       | Audit another seller, attested on the HCS audit topic  |
+| `GET /v1/audits/{auditId}/events`  | Free       | Progress stream of one audit                           |
+| `GET /receipts`                    | Free       | Recent settled payments                                |
+
+A seller with `SELLER_ROLE=services` serves discovery, quote, the two paid services and receipts. An `auditor` serves discovery, quote, the two audit routes and receipts. `both` serves everything.
+
+## Errors
+
+| Status | Meaning                                                                                                     |
+| ------ | ----------------------------------------------------------------------------------------------------------- |
+| 400    | Bad body. Quote requests include a Zod `issues` array; other routes return `{"error": "<reason>"}`         |
+| 402    | No valid payment attached. Read `PAYMENT-REQUIRED` and retry with `PAYMENT-SIGNATURE`                      |
+| 404    | Unknown `endpointId` in a quote request                                                                     |
+| 409    | Counter-offer below the seller's floor. The body carries `minimumAmount` and `listPrice`                    |
+| 502    | An upstream failed (model, mirror node, or the audited seller). Settlement is cancelled, nothing is charged  |
+
+Any 4xx or 5xx from a paid handler cancels the x402 settlement. A buyer only pays for a `200`.
+
+## Where the data comes from
+
+Manifests are built from the seller's configuration at start-up. Quotes are priced with the same `priceFor()` function buyers use, so estimates are reproducible. Rates come from the mirror node's `/api/v1/network/exchangerate`. Receipts are recorded in memory after the facilitator confirms settlement and, when a receipts topic is configured, published to HCS from a queue so consensus never delays a paid response.
+
+## Running your own
+
+`npm run dev` starts a seller, an auditor and the dashboard against your `.env`. See [Run a seller](/seller/overview) for configuration and [Environment](/setup/environment) for every variable.

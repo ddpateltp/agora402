@@ -1,0 +1,101 @@
+---
+title: "Set Up Hedera Seller and Buyer Accounts for Agora402"
+description: "Set up your Hedera testnet ECDSA accounts for Agora402. The seller account receives payments; the buyer account is auto-created and funded from the seller."
+sidebarTitle: "Accounts"
+---
+
+Agora402 uses two separate Hedera accounts to keep payment roles clean: a **seller** account that publishes to the on-chain registry and receives payment for every settled request, and a **buyer** account that signs transactions and operates within per-call and per-session spend limits. You create the seller account yourself at the Hedera developer portal; the buyer account is provisioned automatically from the seller's balance so you never have to manage two sets of portal credentials.
+
+## Set Up the Seller Account
+
+The seller account is the heart of your Agora402 deployment. It receives all incoming payments, signs the registry listing that other agents discover, and writes receipts to the HCS receipts topic.
+
+<Steps>
+  <Step title="Create a testnet ECDSA account">
+    Navigate to [portal.hedera.com](https://portal.hedera.com) and sign in. Create a new account and choose **ECDSA** as the key type when prompted. The faucet automatically credits your new account with free testnet HBAR — no purchase required.
+  </Step>
+
+  <Step title="Copy your account credentials">
+    From the portal dashboard, copy:
+
+    * **Account ID** — displayed as `0.0.xxxxx` (shard.realm.num format)
+    * **ECDSA private key** — a hex string beginning with `0x`
+
+    Keep these in a secure location such as a local password manager. You will not be able to recover the private key from the portal after you leave the page.
+  </Step>
+
+  <Step title="Add credentials to .env">
+    Open your `.env` file (copied from `.env.example`) and fill in the two seller variables:
+
+    ```bash .env
+    SELLER_ACCOUNT_ID=0.0.12345
+    SELLER_PRIVATE_KEY=0xabc123...
+    ```
+
+    Do not add quotes around the values and do not commit this file to version control.
+  </Step>
+</Steps>
+
+## Set Up the Buyer Account
+
+Rather than asking you to create a second portal account, Agora402 provisions the buyer account programmatically. The setup script creates a fresh keypair, submits an account creation transaction to Hedera using the seller's credentials, transfers 100 HBAR from the seller to the new account, and writes the resulting account ID and private key directly to your `.env`.
+
+<Steps>
+  <Step title="Run the buyer setup script">
+    From the repository root, run:
+
+    ```bash
+    npm run setup:buyer
+    ```
+
+    The script transfers 100 HBAR from the seller account to fund the new buyer account. Make sure your seller account has enough HBAR — the testnet faucet provides plenty for development.
+  </Step>
+
+  <Step title="Wait for .env to be updated">
+    The script writes `BUYER_ACCOUNT_ID` and `BUYER_PRIVATE_KEY` to your `.env` automatically. You should see output similar to:
+
+    ```
+    buyer account created: 0.0.67890
+    funded with 100 HBAR from 0.0.12345
+    .env updated with BUYER_ACCOUNT_ID and BUYER_PRIVATE_KEY
+    ```
+  </Step>
+
+  <Step title="Verify the buyer variables are present">
+    Confirm that both buyer variables were written correctly:
+
+    ```bash
+    cat .env | grep BUYER
+    ```
+
+    Expected output:
+
+    ```
+    BUYER_ACCOUNT_ID=0.0.67890
+    BUYER_PRIVATE_KEY=0x...
+    ```
+
+    If either line is missing, re-run `npm run setup:buyer` after confirming your seller credentials are correct in `.env`.
+  </Step>
+</Steps>
+
+<Warning>
+  Do not fill in `BUYER_ACCOUNT_ID` or `BUYER_PRIVATE_KEY` by hand. These values are managed entirely by `npm run setup:buyer`. Manually entering credentials from a different account may cause payment failures or mismatched receipt audits.
+</Warning>
+
+## Account Roles Reference
+
+The table below summarises what each account does in the system so you know which credential to use when troubleshooting.
+
+| Account    | Role                                                  | Key operations                                                                                             |
+| ---------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| **Seller** | Receives all payments for inference and data requests | Signs the registry listing, writes HCS receipts, owns the registry and receipts topics                     |
+| **Buyer**  | Pays for each individual request                      | Signs the partial `TransferTransaction` sent to Blocky402; subject to per-call and per-session budget caps |
+
+## Testnet vs Mainnet
+
+By default, Agora402 targets Hedera testnet and the hosted Blocky402 testnet facilitator. When you are ready to go to production, make the following changes across your `.env`:
+
+<Note>
+  To switch to mainnet, set `HEDERA_NETWORK=mainnet`, replace both account IDs and private keys with your mainnet ECDSA accounts, and change `FACILITATOR_URL` to `https://api.blocky402.com` (the Blocky402 mainnet endpoint, which requires an API key). All HCS topic IDs must also be re-created on mainnet using `npm run setup:topics` against the mainnet network.
+</Note>

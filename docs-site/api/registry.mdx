@@ -1,0 +1,147 @@
+---
+title: "Registry Class: Publish and Read the HCS Service Directory"
+description: "The Registry class reads and writes Agora402 service listings on HCS. Use listServices() to discover sellers or publishListing() to register your service."
+sidebarTitle: "Registry"
+---
+
+The `Registry` class is your gateway to the Agora402 on-chain service directory. Every seller publishes a `ServiceListing` as an HCS topic message, and every buyer reads that same topic through the Hedera mirror node — no centralised database, no trusted operator. When you call `listServices()`, the class validates each listing's ownership inline: if the account that paid for the HCS message does not match the listing's `payTo` field, the entry is silently discarded, giving you tamper-resistant discovery without any registry authority.
+
+## Installation and Import
+
+```typescript
+import { Registry } from '@agora402/registry';
+```
+
+## Constructor
+
+Create one `Registry` instance per network. The mirror URL is derived automatically from `network` if you do not supply one.
+
+```typescript
+const registry = new Registry({
+  network: 'testnet',
+  topicId: process.env.REGISTRY_TOPIC_ID!,
+});
+```
+
+### Options
+
+<ParamField path="network" type="'testnet' | 'mainnet'" required>
+  The Hedera network to connect to. Controls the default mirror node URL and the CAIP-2 prefix used to validate listings.
+</ParamField>
+
+<ParamField path="topicId" type="string" required>
+  The HCS topic ID of the Agora402 registry, in `shard.realm.num` format (e.g. `0.0.12345`). All listings and delist messages are read from — and written to — this topic.
+</ParamField>
+
+<ParamField path="mirrorUrl" type="string">
+  Override the Hedera mirror node REST base URL. Defaults to the standard Hashio endpoint for the chosen network. Use this when running against a private mirror or a local devnet.
+</ParamField>
+
+<ParamField path="fetchImpl" type="typeof fetch">
+  Substitute a custom `fetch` implementation. Useful for testing or for environments that require a proxy. Defaults to the global `fetch`.
+</ParamField>
+
+## Methods
+
+### `listServices()`
+
+```typescript
+await registry.listServices(): Promise<ServiceListing[]>
+```
+
+Reads every message on the HCS topic and assembles the current view of the registry. The method applies three rules in order:
+
+1. Messages that do not parse as a valid `RegistryMessage` are skipped.
+2. For `listing` messages, the HCS message payer must equal `listing.payTo` — entries that fail this check are dropped as spoofed.
+3. The latest listing per UAID wins; any preceding `delist` message for that UAID removes it from the result.
+
+Returns an array of `ServiceListing` objects representing every active, verified seller.
+
+<Note>
+  Reading the registry requires no Hedera account or private key. All data is fetched from the public mirror node over HTTPS.
+</Note>
+
+***
+
+### `findEndpoint(endpointId, asset?)`
+
+```typescript
+await registry.findEndpoint('infer', '0.0.0'): Promise<Array<{ listing: ServiceListing; endpoint: EndpointSpec }>>
+```
+
+Calls `listServices()` internally, then filters to listings that expose an endpoint matching `endpointId` and that accept payments in `asset`. Returns an array of objects — one per matching seller — each containing the full `listing` and the matching `endpoint` descriptor.
+
+<ParamField path="endpointId" type="string" required>
+  The stable endpoint identifier to search for, e.g. `'infer'` or `'hbar-rate'`. Matched against `EndpointSpec.id` for every endpoint in every listing.
+</ParamField>
+
+<ParamField path="asset" type="string">
+  The asset ID that the endpoint must accept, in `shard.realm.num` format. Defaults to `'0.0.0'` (native HBAR). Pass an HTS token ID (e.g. `'0.0.4567'`) to filter for token-denominated services.
+</ParamField>
+
+***
+
+### `publishListing(client, listing)`
+
+```typescript
+await registry.publishListing(client, listing): Promise<TransactionResponse>
+```
+
+Serialises `listing` as a `RegistryMessage` envelope and submits it to the HCS topic via the provided Hedera SDK `Client`. The SDK client's operator account must match `listing.payTo`; if it does not, buyers will reject the listing as spoofed when they call `listServices()`.
+
+<ParamField path="client" type="Client" required>
+  An initialised `@hiero-ledger/sdk` `Client` whose operator account is the seller's `payTo` account. The HCS message is signed and paid by this account.
+</ParamField>
+
+<ParamField path="listing" type="ServiceListing" required>
+  The fully-populated `ServiceListing` object. The `payTo` field must equal the operator account ID of `client`. The listing is validated before submission; invalid listings throw synchronously.
+</ParamField>
+
+***
+
+### `delist(client, uaid, reason?)`
+
+```typescript
+await registry.delist(client, uaid, 'maintenance')
+```
+
+Publishes a `delist` message to the HCS topic. After the message achieves consensus, `listServices()` will exclude the listing. Only the account that originally published the listing (i.e. the operator of `client`) can delist it — the same HCS-payer-equals-`payTo` rule applies.
+
+<ParamField path="client" type="Client" required>
+  The Hedera SDK `Client` whose operator is the original listing's `payTo` account.
+</ParamField>
+
+<ParamField path="uaid" type="string" required>
+  The HCS-14 UAID of the listing to remove, e.g. `'uaid:aid:...'`.
+</ParamField>
+
+<ParamField path="reason" type="string">
+  An optional human-readable reason string written into the delist message, useful for audit trails. Examples: `'maintenance'`, `'deprecated'`.
+</ParamField>
+
+## Trust Model
+
+Agora402 uses no registry operator and no admin key. Listing ownership is proven entirely through the HCS consensus mechanism: the account that pays the HCS message fee must be the same account that receives payments (`payTo`). This binding means:
+
+* A seller cannot impersonate another seller's `payTo` account without controlling that account's private key.
+* Any account can publish a listing for itself at any time without permission from a central authority.
+* Any account can delist only its own listings.
+
+<Info>
+  This trust model is enforced client-side in `listServices()`. The on-chain topic itself is permissionless — the safety guarantee lives in the buyer's verification logic, not in topic access controls.
+</Info>
+
+## Example: Discover All Sellers Offering `infer`
+
+```typescript
+const registry = new Registry({
+  network: 'testnet',
+  topicId: process.env.REGISTRY_TOPIC_ID!,
+});
+
+const results = await registry.findEndpoint('infer');
+
+for (const { listing, endpoint } of results) {
+  console.log(`${listing.name}: ${listing.baseUrl}${endpoint.path}`);
+}
+```

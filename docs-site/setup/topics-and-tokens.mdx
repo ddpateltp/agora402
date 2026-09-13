@@ -1,0 +1,102 @@
+---
+title: "Create Agora402 HCS Topics and Optional HTS TOLL Token"
+description: "Create the two Hedera Consensus Service topics Agora402 needs for discovery and audit, and optionally deploy a TOLL HTS token for alternative settlement."
+sidebarTitle: "Topics and tokens"
+---
+
+Agora402 uses two Hedera Consensus Service (HCS) topics to make the marketplace fully on-chain and auditable without any centralised database. The **registry topic** is where sellers publish their service listings — buyers read it via the public mirror node to discover available services and their prices. The **receipts topic** is where the seller writes a cryptographic receipt for every settled payment, recording the transaction ID, payer, amount, and a hash of the response so anyone can verify the bill. Both topics are created in a single script, and their IDs are written to your `.env` automatically.
+
+## Create the HCS Topics
+
+<Steps>
+  <Step title="Run the topics setup script">
+    From the repository root, run:
+
+    ```bash
+    npm run setup:topics
+    ```
+
+    This creates two new HCS topics on Hedera testnet using your seller account credentials and submits the creation transactions to the network.
+  </Step>
+
+  <Step title="Wait for .env to be updated">
+    Once both transactions reach consensus, the script writes the new topic IDs to your `.env`. You will see output like:
+
+    ```
+    registry topic created:  0.0.4567890
+    receipts topic created:  0.0.4567891
+    .env updated with REGISTRY_TOPIC_ID and RECEIPTS_TOPIC_ID
+    ```
+
+    The exact topic IDs will differ — Hedera assigns sequential entity numbers on each network.
+  </Step>
+
+  <Step title="Confirm the variables in .env">
+    Verify both topic IDs were persisted:
+
+    ```bash
+    cat .env | grep TOPIC_ID
+    ```
+
+    Expected output:
+
+    ```
+    REGISTRY_TOPIC_ID=0.0.4567890
+    RECEIPTS_TOPIC_ID=0.0.4567891
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  HCS topics are public and permissionless by default. Any Hedera account can submit a message to a topic, but the Agora402 registry's trust model does not rely on topic-level access control. Instead, the buyer agent verifies that the `payTo` account in each listing matches the Hedera account that paid for the HCS submission — so spoofed listings from third parties are automatically discarded.
+</Note>
+
+## Optional: Deploy the TOLL HTS Token
+
+By default, Agora402 settles all payments in native HBAR. If you want to add an on-chain royalty layer to every transfer — enforced automatically by the Hedera Token Service at the protocol level — you can deploy the **TOLL token**, a custom HTS fungible token with a fixed fee attached to every transfer.
+
+<Steps>
+  <Step title="Run the token setup script">
+    ```bash
+    npm run setup:token
+    ```
+
+    The script creates a new HTS fungible token from the seller account, configures a custom fixed fee on the token so a portion of every TOLL transfer flows back to the fee collector, associates the buyer account with the token, and funds the buyer with an initial TOLL balance.
+  </Step>
+
+  <Step title="Check .env for the token ID">
+    After the script completes, your `.env` will contain:
+
+    ```bash .env
+    TOLL_TOKEN_ID=0.0.4567892
+    ```
+
+    Once `TOLL_TOKEN_ID` is set, the seller's endpoints advertise TOLL as an accepted payment asset alongside HBAR, and the buyer agent selects the preferred asset at runtime.
+  </Step>
+</Steps>
+
+<Info>
+  Running `npm run setup:token` is entirely optional. If you leave `TOLL_TOKEN_ID` empty in `.env`, Agora402 settles every request in HBAR with no change to any other part of the system. You can add the TOLL token at any time without restarting the seller or re-publishing the registry listing.
+</Info>
+
+The TOLL token adds an on-chain royalty layer to every transfer: the Hedera Token Service enforces the fixed fee automatically at the point of settlement, before the transaction ever reaches the seller. This means the fee is collected even if the seller's application logic never runs — it is a protocol-level guarantee, not an application-level check.
+
+## Verify Your Topics on HashScan
+
+After creating the topics, you can inspect them in the Hedera block explorer. Replace `<TOPIC_ID>` with the value from your `.env`:
+
+```
+https://hashscan.io/testnet/topic/<TOPIC_ID>
+```
+
+For example:
+
+```
+https://hashscan.io/testnet/topic/0.0.4567890
+```
+
+HashScan shows every message submitted to the topic, the submitting account, the consensus timestamp, and the decoded JSON payload. Use this to confirm that your listing was published successfully after running `npm run setup:register`, and to audit the receipts topic after running paid requests.
+
+<Tip>
+  Bookmark both topic pages. The registry topic page lets you see all active seller listings on the network; the receipts topic page gives you a full public audit trail of every settled payment your seller has processed.
+</Tip>

@@ -1,0 +1,112 @@
+---
+title: "x402 Protocol: Per-Request HTTP Payments on Hedera"
+description: "Agora402 uses the x402 protocol to gate HTTP endpoints behind per-request micropayments. Learn how the 402 challenge-response flow works on Hedera."
+sidebarTitle: "x402 protocol"
+---
+
+The x402 protocol revives the long-dormant HTTP `402 Payment Required` status code and puts it to work for machine-to-machine micropayments. Instead of API keys, subscriptions, or out-of-band billing, an x402-enabled server embeds the exact price and payment destination in the HTTP response itself — and the client pays inline, inside the same logical request cycle. Agora402 uses x402 as the payment layer for every call a buyer agent makes to a seller service, with Hedera as the settlement network.
+
+## What x402 Is
+
+HTTP has carried a `402 Payment Required` status code since 1991 but left it "reserved for future use." The x402 specification defines that future use: when a server needs payment for a resource, it returns `402` with a `PAYMENT-REQUIRED` header that encodes the payment scheme, network, asset, amount, and destination. The client — a wallet, an agent, or any x402-aware HTTP client — builds and signs a payment transaction, then retries the original request with a `PAYMENT-SIGNATURE` header. The server verifies and settles the payment, then runs the handler. No redirect, no pre-registration, no API key handshake.
+
+## The Full Request Flow
+
+<Steps>
+  <Step title="Client sends the initial request">
+    The buyer agent calls the seller endpoint normally — for example, `POST /v1/infer` with a chat messages body. The request reaches the `@x402/express` middleware before the handler runs.
+  </Step>
+
+  <Step title="Server returns HTTP 402 with payment terms">
+    The middleware rejects the unpaid request with `402 Payment Required` and attaches a `PAYMENT-REQUIRED` header encoding the exact payment requirements:
+
+    ```http title="Example 402 response headers"
+    HTTP/1.1 402 Payment Required
+    PAYMENT-REQUIRED: scheme=exact, network=hedera:testnet, asset=0.0.0, amount=50000, payTo=0.0.12345, extra.feePayer=0.0.67890
+    ```
+
+    The `amount` is computed dynamically from the request body — for the inference endpoint, it reflects the actual input token count and the budgeted output tokens. If the buyer attached a `quoteId`, the middleware uses the locked quote amount instead.
+  </Step>
+
+  <Step title="Buyer builds and signs a Hedera TransferTransaction">
+    `@x402/fetch` on the buyer side intercepts the `402`. It runs the configured spend controls (per-call cap, session budget, allowed assets) and, if the amount is acceptable, hands off to `@x402/hedera`. The Hedera exact scheme constructs a `TransferTransaction` that moves exactly `amount` tinybars (or token units) from the buyer account to `payTo`, designating the Blocky402 fee-payer account (`extra.feePayer`) as the Hedera transaction fee payer. The buyer signs the transaction with their own account key — only their transfer signature, not the fee-payer signature — and the partially signed transaction is base64-encoded into a `PAYMENT-SIGNATURE` header. The original request is retried with this header attached.
+  </Step>
+
+  <Step title="Seller middleware calls Blocky402 /verify">
+    Before the handler runs, the `@x402/express` middleware sends the partially signed transaction to Blocky402 `POST /verify`. Blocky402 decodes the transaction, checks the buyer's signature, confirms the transfer amounts match the requirements, and verifies the buyer account has sufficient balance. If verification fails, the server returns `402` again without running the handler and without charging the buyer.
+  </Step>
+
+  <Step title="Server runs the handler">
+    With the payment verified, the middleware allows the request through to the actual route handler — the LLM inference call, the HBAR/USD rate lookup, or any other service. The handler executes normally and returns a response.
+  </Step>
+
+  <Step title="Settlement fails fast on errors">
+    If the handler returns a `4xx` or `5xx` status, the middleware cancels settlement entirely. The buyer is never charged for a request that fails. This guarantee is built into the `@x402/express` middleware and applies to every endpoint.
+  </Step>
+
+  <Step title="Seller middleware calls Blocky402 /settle">
+    On a successful handler response, the middleware calls Blocky402 `POST /settle`. Blocky402 co-signs the transaction as the Hedera fee payer, submits the fully signed `TransferTransaction` to the Hedera network, and returns the Hedera transaction ID. The final response to the buyer includes a `PAYMENT-RESPONSE` header:
+
+    ```http title="Example settled response headers"
+    HTTP/1.1 200 OK
+    PAYMENT-RESPONSE: transaction=0.0.12345@1700000000.000000001
+    ```
+
+    The buyer agent reads this transaction ID, queries the mirror node to confirm the transfer, and surfaces the HashScan link.
+  </Step>
+</Steps>
+
+## PAYMENT-REQUIRED Header Fields
+
+The `PAYMENT-REQUIRED` header carries all the information the buyer needs to construct a valid payment. Each field is documented below.
+
+| Field            | Type   | Description                                                                                                                                                   |
+| ---------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scheme`         | string | Payment scheme. Agora402 always uses `exact` — the buyer transfers exactly the stated amount.                                                                 |
+| `network`        | string | CAIP-2 network identifier. `hedera:testnet` or `hedera:mainnet`.                                                                                              |
+| `asset`          | string | Hedera entity ID of the payment asset. `0.0.0` denotes native HBAR (8 decimal places, amounts in tinybars). Any other value is an HTS token ID.               |
+| `amount`         | string | Exact amount in atomic units (tinybars for HBAR, token sub-units for HTS). Always a decimal integer string — no floating point.                               |
+| `payTo`          | string | Hedera account ID of the seller that receives the transfer (`shard.realm.num` format).                                                                        |
+| `extra.feePayer` | string | Hedera account ID of the Blocky402 facilitator that co-signs as fee payer. The buyer's transaction must designate this account to pay the Hedera network fee. |
+
+## x402 Packages
+
+Agora402 is built on the open x402 package ecosystem. You interact with the buyer-side packages directly; the seller-side packages run inside the service you connect to.
+
+<CardGroup cols={2}>
+  <Card title="@x402/fetch" icon="arrow-down-to-bracket">
+    The buyer-side fetch wrapper. Wrap your `fetch` calls with `wrapFetchWithPayment` and it automatically intercepts `402` responses, runs your spend policies, builds the payment, and retries. Import from the `@x402/fetch` package.
+  </Card>
+
+  <Card title="@x402/hedera" icon="link">
+    The Hedera-specific `exact` scheme implementation. Constructs and partially signs `TransferTransaction` objects for both buyer (`ExactHederaScheme`) and verification. Used internally by `@x402/fetch` once registered for the `hedera:*` network prefix.
+  </Card>
+
+  <Card title="@x402/express" icon="server">
+    The seller-side Express middleware. Issues `402` challenges with per-request pricing, calls Blocky402 for verify and settle, and triggers receipt writing after each successful settlement. Runs inside the Agora402 seller service.
+  </Card>
+
+  <Card title="@x402/core" icon="cube">
+    Shared types used by all other packages: `PaymentRequirements`, `SettleResponse`, `x402Client`, `x402HTTPClient`. Import these for typed access to payment objects in your agent code.
+  </Card>
+</CardGroup>
+
+<Note>
+  If a seller endpoint returns any `4xx` or `5xx` status code, the `@x402/express` middleware cancels the settlement call to Blocky402. The buyer's `TransferTransaction` is never submitted to Hedera and no funds leave the buyer account. You are only charged when the seller delivers a successful response.
+</Note>
+
+## Spend Controls on the Buyer
+
+The `BuyerAgent` configures two layers of protection before any payment is created:
+
+<Accordion title="Per-call cap (maxPerCall)">
+  Set as `maxPerCall` in atomic units when constructing `BuyerAgent`. The x402 spend controls inside `@x402/fetch` reject any `PAYMENT-REQUIRED` header whose `amount` exceeds this value, even before the transaction is built. The request fails immediately rather than paying more than you authorized for a single call.
+</Accordion>
+
+<Accordion title="Session budget (sessionBudget)">
+  Set as `sessionBudget` in atomic units. A registered policy checks the remaining budget (`sessionBudget - totalSpent`) against the incoming `amount`. If no offered option fits within the remaining budget, the agent emits a `failed` event and does not proceed. The session budget accumulates across all calls in a single `BuyerAgent` instance.
+</Accordion>
+
+<Accordion title="Asset and network filter">
+  A policy filters out any `PAYMENT-REQUIRED` option that does not match the agent's configured `asset` (`0.0.0` for HBAR by default) and the configured Hedera network. If a seller offers multiple payment options, only the matching one is used.
+</Accordion>

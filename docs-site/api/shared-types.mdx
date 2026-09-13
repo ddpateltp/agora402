@@ -1,0 +1,507 @@
+---
+title: "Agora402 Shared Types and Utility Functions Reference"
+description: "Reference for Agora402 shared TypeScript types: ServiceListing, Quote, Receipt, PricingModel, and utility functions priceFor, generateUaid, formatAmount."
+sidebarTitle: "Shared types"
+---
+
+The `@agora402/shared` package is the single source of truth for every data structure and utility function that crosses the boundary between buyers, sellers, and the registry. All types come with runtime validation and full TypeScript inference from the same definition. The utility functions handle pricing arithmetic, amount formatting, UAID generation, and token estimation — all without floating-point arithmetic touching money.
+
+## Installation and Import
+
+```typescript
+import {
+  ServiceListing,
+  Quote,
+  Receipt,
+  PricingModel,
+  priceFor,
+  generateUaid,
+  formatAmount,
+} from '@agora402/shared';
+```
+
+## Types
+
+### `ServiceListing`
+
+The record a seller publishes to the HCS registry topic. One listing describes an entire service: who receives payments, where the service lives, and which endpoints it sells.
+
+<Expandable title="ServiceListing fields">
+  <ResponseField name="uaid" type="string">
+    The seller's HCS-14 Universal Agent Identifier, always starting with `'uaid:'`. Generated with `generateUaid()`. Used as the primary key across the registry and receipt ledger.
+  </ResponseField>
+
+  <ResponseField name="name" type="string">
+    Human-readable service name, e.g. `'Hedera AI Seller'`.
+  </ResponseField>
+
+  <ResponseField name="version" type="string">
+    Semantic version string for the service, e.g. `'1.0.0'`.
+  </ResponseField>
+
+  <ResponseField name="payTo" type="string">
+    The Hedera account ID (`shard.realm.num`) that receives all payments. Must match the HCS message payer for the listing to be considered valid.
+  </ResponseField>
+
+  <ResponseField name="baseUrl" type="string">
+    The HTTPS base URL of the seller's service, e.g. `'https://seller.example.com'`. All endpoint paths are relative to this URL.
+  </ResponseField>
+
+  <ResponseField name="quotePath" type="string">
+    Path of the quote endpoint relative to `baseUrl`. Defaults to `'/a2a/quote'`.
+  </ResponseField>
+
+  <ResponseField name="facilitator" type="string">
+    URL of the x402 facilitator / Blocky402 instance that settles payments for this seller.
+  </ResponseField>
+
+  <ResponseField name="endpoints" type="EndpointSpec[]">
+    One or more endpoints the service sells. See `EndpointSpec` below.
+  </ResponseField>
+
+  <ResponseField name="receiptsTopicId" type="string">
+    Optional HCS topic ID where the seller writes `Receipt` messages after each settlement. Provide this so buyers can audit the billing trail independently.
+  </ResponseField>
+
+  <ResponseField name="publishedAt" type="string">
+    ISO 8601 timestamp at which the listing was created.
+  </ResponseField>
+</Expandable>
+
+***
+
+### `EndpointSpec`
+
+Describes a single sellable HTTP endpoint within a `ServiceListing`.
+
+<Expandable title="EndpointSpec fields">
+  <ResponseField name="id" type="string">
+    Stable identifier for this endpoint within the service, e.g. `'infer'` or `'hbar-rate'`. Buyers use this to discover the service via `findEndpoint()` and `discover()`.
+  </ResponseField>
+
+  <ResponseField name="method" type="'GET' | 'POST'">
+    HTTP method for this endpoint.
+  </ResponseField>
+
+  <ResponseField name="path" type="string">
+    URL path relative to `ServiceListing.baseUrl`, always starting with `'/'`, e.g. `'/a2a/infer'`.
+  </ResponseField>
+
+  <ResponseField name="description" type="string">
+    Human-readable description of what the endpoint does.
+  </ResponseField>
+
+  <ResponseField name="skills" type="number[]">
+    HCS-14 / OASF skill code integers. Used for capability discovery in agent networks. Defaults to `[]`.
+  </ResponseField>
+
+  <ResponseField name="accepts" type="PaymentOptionSpec[]">
+    One or more payment options for this endpoint. At least one entry is required. Buyers filter by `asset` and `network` to find compatible options.
+  </ResponseField>
+</Expandable>
+
+***
+
+### `PaymentOptionSpec`
+
+One way to pay for an endpoint — a specific combination of network, asset, and pricing model.
+
+<Expandable title="PaymentOptionSpec fields">
+  <ResponseField name="network" type="'hedera:testnet' | 'hedera:mainnet'">
+    The CAIP-2 network identifier for this payment option.
+  </ResponseField>
+
+  <ResponseField name="asset" type="string">
+    Asset ID (`shard.realm.num`). `'0.0.0'` for native HBAR; an HTS token ID for token payments.
+  </ResponseField>
+
+  <ResponseField name="symbol" type="string">
+    Human-readable symbol for the asset, e.g. `'HBAR'` or `'TOLL'`.
+  </ResponseField>
+
+  <ResponseField name="decimals" type="number">
+    Decimal places for the asset. `8` for HBAR (1 HBAR = 100,000,000 tinybars).
+  </ResponseField>
+
+  <ResponseField name="pricing" type="PricingModel">
+    The pricing model for this payment option. See `PricingModel` below.
+  </ResponseField>
+</Expandable>
+
+***
+
+### `PricingModel`
+
+A discriminated union of three pricing strategies. All monetary amounts are stored as decimal strings to prevent floating-point precision loss.
+
+<Tabs>
+  <Tab title="flat">
+    Charge a fixed amount per request, regardless of input size.
+
+    ```typescript
+    const model: PricingModel = {
+      kind: 'flat',
+      amount: '1000000', // 0.01 HBAR
+    };
+    ```
+
+    <ResponseField name="kind" type="'flat'">
+      Discriminant. Always `'flat'`.
+    </ResponseField>
+
+    <ResponseField name="amount" type="string">
+      Fixed price in atomic units, as a decimal integer string.
+    </ResponseField>
+  </Tab>
+
+  <Tab title="per-token">
+    Charge a base fee plus per-token costs for input and output. Used for LLM inference endpoints.
+
+    ```typescript
+    const model: PricingModel = {
+      kind: 'per-token',
+      base: '500000',       // 0.005 HBAR base
+      inputPer1k: '100000', // 0.001 HBAR per 1k input tokens
+      outputPer1k: '200000',// 0.002 HBAR per 1k output tokens
+    };
+    ```
+
+    <ResponseField name="kind" type="'per-token'">
+      Discriminant. Always `'per-token'`.
+    </ResponseField>
+
+    <ResponseField name="base" type="string">
+      Flat fee charged once per request, regardless of token count.
+    </ResponseField>
+
+    <ResponseField name="inputPer1k" type="string">
+      Cost per 1,000 input tokens in atomic units.
+    </ResponseField>
+
+    <ResponseField name="outputPer1k" type="string">
+      Cost per 1,000 output tokens (budgeted from `max_tokens`) in atomic units.
+    </ResponseField>
+  </Tab>
+
+  <Tab title="per-unit">
+    Charge a fixed amount per abstract unit — queries, seconds, kilobytes, or any other countable resource.
+
+    ```typescript
+    const model: PricingModel = {
+      kind: 'per-unit',
+      unit: 'query',
+      amountPerUnit: '2000000', // 0.02 HBAR per query
+    };
+    ```
+
+    <ResponseField name="kind" type="'per-unit'">
+      Discriminant. Always `'per-unit'`.
+    </ResponseField>
+
+    <ResponseField name="unit" type="string">
+      Human-readable unit label, e.g. `'query'`, `'second'`, `'kb'`.
+    </ResponseField>
+
+    <ResponseField name="amountPerUnit" type="string">
+      Cost per one unit in atomic units, as a decimal integer string.
+    </ResponseField>
+  </Tab>
+</Tabs>
+
+***
+
+### `QuoteRequest`
+
+Sent by a buyer to the seller's `/a2a/quote` endpoint to request a price for a specific amount of work.
+
+<Expandable title="QuoteRequest fields">
+  <ResponseField name="buyer" type="string">
+    Optional UAID of the requesting agent. Informational only — the seller does not enforce this.
+  </ResponseField>
+
+  <ResponseField name="endpointId" type="string">
+    The endpoint the buyer wants to use, e.g. `'infer'`.
+  </ResponseField>
+
+  <ResponseField name="estimate" type="object">
+    The buyer's work estimate. Fields: `inputTokens` (integer), `maxOutputTokens` (integer), `units` (integer). All optional; the seller uses whichever fields are relevant to its pricing model. Defaults to `{}`.
+  </ResponseField>
+
+  <ResponseField name="maxAmount" type="string">
+    Optional ceiling price the buyer is willing to pay, in atomic units as a decimal string. The seller may accept this counter, reject it (HTTP 409), or quote between the counter and list price.
+  </ResponseField>
+
+  <ResponseField name="asset" type="string">
+    Asset ID for the desired payment method. Defaults to `'0.0.0'` (HBAR).
+  </ResponseField>
+</Expandable>
+
+***
+
+### `Quote`
+
+Returned by the seller in response to a `QuoteRequest`. The seller signs the quote so the buyer can verify it was not tampered with in transit.
+
+<Expandable title="Quote fields">
+  <ResponseField name="quoteId" type="string">
+    Unique identifier for this quote (minimum 8 characters). The buyer includes this in the subsequent paid request so the seller can match the agreed price.
+  </ResponseField>
+
+  <ResponseField name="seller" type="string">
+    The seller's UAID. Buyers verify this matches the listing's `uaid` to prevent quote substitution.
+  </ResponseField>
+
+  <ResponseField name="endpointId" type="string">
+    The endpoint this quote covers.
+  </ResponseField>
+
+  <ResponseField name="network" type="'hedera:testnet' | 'hedera:mainnet'">
+    The CAIP-2 network for settlement.
+  </ResponseField>
+
+  <ResponseField name="asset" type="string">
+    The asset to pay in.
+  </ResponseField>
+
+  <ResponseField name="amount" type="string">
+    The agreed price in atomic units, as a decimal string.
+  </ResponseField>
+
+  <ResponseField name="expiresAt" type="number">
+    Unix timestamp (seconds) after which this quote is no longer valid. Typical validity window is 60–300 seconds.
+  </ResponseField>
+
+  <ResponseField name="basis" type="object">
+    The work estimate and pricing inputs the seller used to compute `amount`, echoed back for auditability.
+  </ResponseField>
+
+  <ResponseField name="signature" type="string">
+    Hex-encoded ECDSA or ED25519 signature over the canonical quote body, produced by the seller's account key.
+  </ResponseField>
+
+  <ResponseField name="signerPublicKey" type="string">
+    Hex-encoded DER public key corresponding to `signature`. When `verifyQuoteSigner` is enabled on the buyer, this key is verified against the seller's `payTo` account on the mirror node.
+  </ResponseField>
+</Expandable>
+
+***
+
+### `Receipt`
+
+Written to the receipts HCS topic by the seller after every successful payment settlement. See the [ReceiptLedger reference](/api/receipt-ledger) for how to read and audit receipts.
+
+<Expandable title="Receipt fields">
+  <ResponseField name="v" type="1">
+    Schema version. Always `1`.
+  </ResponseField>
+
+  <ResponseField name="type" type="'receipt'">
+    Message type discriminant. Always `'receipt'`.
+  </ResponseField>
+
+  <ResponseField name="seller" type="string">
+    The seller's UAID.
+  </ResponseField>
+
+  <ResponseField name="transactionId" type="string">
+    Hedera transaction ID of the settlement, e.g. `'0.0.12345@1700000000.123456789'`.
+  </ResponseField>
+
+  <ResponseField name="network" type="'hedera:testnet' | 'hedera:mainnet'">
+    CAIP-2 network where the payment was settled.
+  </ResponseField>
+
+  <ResponseField name="payer" type="string">
+    Account ID of the buyer.
+  </ResponseField>
+
+  <ResponseField name="payTo" type="string">
+    Account ID of the seller's receiving account.
+  </ResponseField>
+
+  <ResponseField name="asset" type="string">
+    Asset used for payment.
+  </ResponseField>
+
+  <ResponseField name="amount" type="string">
+    Amount paid in atomic units.
+  </ResponseField>
+
+  <ResponseField name="resource" type="string">
+    Endpoint path that was paid for.
+  </ResponseField>
+
+  <ResponseField name="quoteId" type="string">
+    Optional. Quote ID from the negotiation, if a quote was used.
+  </ResponseField>
+
+  <ResponseField name="usage" type="object">
+    Metering evidence from the seller, e.g. token counts.
+  </ResponseField>
+
+  <ResponseField name="responseHash" type="string">
+    Optional SHA-256 hex digest of the response body.
+  </ResponseField>
+
+  <ResponseField name="issuedAt" type="string">
+    ISO 8601 timestamp when the seller generated the receipt.
+  </ResponseField>
+</Expandable>
+
+## Utility Functions
+
+### `priceFor(model, estimate)`
+
+```typescript
+priceFor(model: PricingModel, estimate?: WorkEstimate): bigint
+```
+
+Computes the price of a request in atomic units using the given pricing model and work estimate. All arithmetic uses `BigInt` — tinybars never pass through a float. Token costs are rounded up per 1,000-token block.
+
+```typescript
+// Flat pricing: always returns model.amount
+priceFor({ kind: 'flat', amount: '1000000' })
+// → 1_000_000n
+
+// Per-token pricing
+priceFor(
+  { kind: 'per-token', base: '500000', inputPer1k: '100000', outputPer1k: '200000' },
+  { inputTokens: 120, maxOutputTokens: 256 }
+)
+// base + ceil(120/1000)*100000 + ceil(256/1000)*200000
+// → 500000n + 100000n + 200000n = 800000n (all rounded up)
+
+// Per-unit pricing
+priceFor(
+  { kind: 'per-unit', unit: 'query', amountPerUnit: '2000000' },
+  { units: 3 }
+)
+// → 6_000_000n
+```
+
+<Note>
+  Both buyers and sellers call `priceFor()` with the same pricing model and the same estimate. This reproducibility is what makes the quote handshake trustworthy: neither side can unilaterally inflate the price.
+</Note>
+
+***
+
+### `generateUaid(input)`
+
+```typescript
+generateUaid(input: AgentIdentityInput): string
+// Returns: 'uaid:aid:<base58(sha384(canonicalJson))>;uid=...;registry=...;proto=...;nativeId=...'
+```
+
+Generates a deterministic HCS-14 Universal Agent Identifier from the agent's identity fields. The core `aid` component is `Base58(SHA-384(canonical JSON))`, so the same identity always produces the same UAID and the identifier is collision-resistant.
+
+```typescript
+const uaid = generateUaid({
+  registry: 'agora402',
+  name: 'my-buyer',
+  version: '1.0.0',
+  protocol: 'a2a',
+  nativeId: 'hedera:testnet:0.0.12345',
+  skills: [],
+  uid: 'my-buyer',
+});
+// → 'uaid:aid:3vQB5...<base58>;uid=my-buyer;registry=agora402;proto=a2a;nativeId=hedera:testnet:0.0.12345'
+```
+
+<Expandable title="AgentIdentityInput fields">
+  <ResponseField name="registry" type="string" required>
+    Registry namespace in lowercase, e.g. `'agora402'`. Use `'self'` when no registry applies.
+  </ResponseField>
+
+  <ResponseField name="name" type="string" required>
+    Display name for the agent.
+  </ResponseField>
+
+  <ResponseField name="version" type="string" required>
+    Semantic version string.
+  </ResponseField>
+
+  <ResponseField name="protocol" type="string" required>
+    Protocol identifier in lowercase, e.g. `'a2a'`, `'hcs-10'`, `'mcp'`.
+  </ResponseField>
+
+  <ResponseField name="nativeId" type="string" required>
+    CAIP-10 style native identifier, e.g. `'hedera:testnet:0.0.12345'`.
+  </ResponseField>
+
+  <ResponseField name="skills" type="number[]">
+    OASF / HCS-14 skill codes. Defaults to `[]`. Sorted before hashing so order does not affect the UAID.
+  </ResponseField>
+
+  <ResponseField name="uid" type="string">
+    Registry-scoped unique identifier. Defaults to `'0'`.
+  </ResponseField>
+
+  <ResponseField name="domain" type="string">
+    Optional A2A domain. Appended to the UAID as `domain=...` when provided.
+  </ResponseField>
+</Expandable>
+
+***
+
+### `formatAmount(amount, decimals, symbol)`
+
+```typescript
+formatAmount(amount: bigint | string, decimals: number, symbol: string): string
+```
+
+Converts an atomic-unit amount into a human-readable string without floating-point arithmetic.
+
+```typescript
+formatAmount(100_000_000n, 8, 'HBAR') // → '1 HBAR'
+formatAmount(50_000_000n, 8, 'HBAR')  // → '0.5 HBAR'
+formatAmount(1_234_567n, 8, 'HBAR')   // → '0.01234567 HBAR'
+formatAmount(500n, 6, 'TOLL')         // → '0.0005 TOLL'
+```
+
+***
+
+### `parseAmount(human, decimals)`
+
+```typescript
+parseAmount(human: string, decimals: number): bigint
+```
+
+Parses a human-readable decimal string into atomic units. The inverse of `formatAmount()`. Uses only integer arithmetic — no floats.
+
+```typescript
+parseAmount('0.05', 8)  // → 5_000_000n
+parseAmount('1', 8)     // → 100_000_000n
+parseAmount('0.5', 6)   // → 500_000n
+```
+
+<Warning>
+  `parseAmount()` silently truncates fractional digits beyond `decimals`. For example, `parseAmount('0.123456789', 8)` returns `12_345_678n`, discarding the ninth decimal digit. Always validate user-supplied amounts before passing them to this function.
+</Warning>
+
+***
+
+### `estimateChatInput(body)`
+
+```typescript
+estimateChatInput(body: unknown): { inputTokens: number; maxOutputTokens: number }
+```
+
+Produces a deterministic work estimate from an OpenAI-style chat completion request body. Uses a simple `ceil(characters / 4)` heuristic (\~4 characters per token for English text). Both buyers and sellers call this function so the estimate is consistent across both sides of the price negotiation.
+
+```typescript
+const estimate = estimateChatInput({
+  messages: [
+    { role: 'user', content: 'Explain x402 in one sentence.' },
+  ],
+  max_tokens: 256,
+});
+// → { inputTokens: 8, maxOutputTokens: 256 }
+```
+
+<ParamField path="body" type="unknown" required>
+  An OpenAI-style request body. The function reads `body.messages[].content` (string or JSON-serialisable) and `body.prompt` (string fallback). `body.max_tokens` sets `maxOutputTokens`; defaults to `256` if absent or non-positive.
+</ParamField>
+
+<Tip>
+  Pass the same `body` object to both `estimateChatInput()` and the paid `call()` to ensure the estimate used for quoting matches the actual request, giving you predictable pricing.
+</Tip>

@@ -1,0 +1,113 @@
+---
+title: "On-Chain Verification: Confirm Every Hedera Settlement"
+description: "Agora402 verifies every payment by polling the Hedera mirror node after settlement. Learn how verifyOnChain works and how to interpret HashScan links."
+sidebarTitle: "Verification"
+---
+
+Every payment made through `BuyerAgent` produces a verifiable record on the Hedera ledger. After Blocky402 settles a transfer and returns a `PAYMENT-RESPONSE` header, the agent automatically polls the Hedera mirror node to confirm the transaction exists, succeeded, and credited the correct seller account for the exact amount paid. This verification step runs transparently after every `call()`, `infer()`, and `hbarRate()` — no extra code required.
+
+## How Verification Works
+
+After Blocky402 co-signs and submits the Hedera `TransferTransaction`, it responds with a `PAYMENT-RESPONSE` header containing the Hedera transaction id (e.g. `0.0.12345@1750000000.123456789`). The `BuyerAgent` then:
+
+1. Emits a `verifying` event with the transaction id.
+2. Polls the Hedera mirror node REST API up to **10 times**, waiting **1.5 seconds** between each attempt.
+3. On each attempt, fetches the transaction record and checks that it is present.
+4. Once found, reads the `transfers` array and sums all credits to the seller's `payTo` account.
+5. Emits a `verified` event confirming the result code, the credited amount, and the consensus timestamp.
+6. Returns the full `MirrorTransaction` record as the `onChain` field of `PaidResult`.
+
+If the transaction is not visible on the mirror node after all 10 attempts, `verifyOnChain` returns `null` and emits a `failed` event. The transaction may still appear a few seconds later — mirror node indexing lags consensus by a few seconds.
+
+## What Is Verified
+
+| Check               | How                                                                                  |
+| ------------------- | ------------------------------------------------------------------------------------ |
+| Transaction exists  | Mirror node returns a non-empty record for the transaction id                        |
+| Result is SUCCESS   | `MirrorTransaction.result === 'SUCCESS'`                                             |
+| Seller was credited | Sum of all `transfers` entries where `account === payTo` equals the payment `amount` |
+
+## `verifyOnChain` Method Signature
+
+You can call `verifyOnChain` directly if you need to re-check a transaction id after the fact, or to verify a settlement you received through another channel.
+
+```typescript title="verify-on-chain.ts"
+import { BuyerAgent } from '@agora402/buyer';
+
+// verifyOnChain(transactionId, payTo, attempts = 10, delayMs = 1500)
+// Re-verify a known transaction
+const mirrorTx = await agent.verifyOnChain(
+  transactionId, // e.g. '0.0.12345@1750000000.123456789'
+  payTo,         // seller's payTo account, e.g. '0.0.4567890'
+  10,            // max poll attempts (default: 10)
+  1500,          // ms between attempts (default: 1500)
+);
+
+if (mirrorTx) {
+  console.log(`Result:    ${mirrorTx.result}`);
+  console.log(`Timestamp: ${mirrorTx.consensus_timestamp}`);
+} else {
+  console.warn('Transaction not yet visible on mirror node. Check HashScan.');
+}
+```
+
+## `PaidResult` Verification Fields
+
+Every `PaidResult` returned by `call()`, `infer()`, and `hbarRate()` includes the following fields that carry settlement and verification data:
+
+<ResponseField name="settlement" type="SettleResponse | null">
+  The raw response from Blocky402's `/settle` endpoint. Contains `transaction` (the Hedera transaction id string) and `success` (boolean). `null` if the seller returned a non-2xx response.
+</ResponseField>
+
+<ResponseField name="amount" type="bigint | null">
+  The amount paid in atomic units of the settlement asset (tinybars for HBAR). Taken from the settle response or the selected `402` payment requirement. `null` if the call was not charged.
+</ResponseField>
+
+<ResponseField name="asset" type="string | null">
+  The asset id used for payment, e.g. `'0.0.0'` for HBAR or an HTS token id. `null` if the call was not charged.
+</ResponseField>
+
+<ResponseField name="hashscanUrl" type="string | null">
+  A direct link to the settlement transaction on HashScan. Format: `https://hashscan.io/testnet/transaction/<transactionId>`. `null` if the call was not charged.
+</ResponseField>
+
+<ResponseField name="quote" type="Quote | null">
+  The signed quote negotiated before payment, including the `quoteId`, `amount`, and seller signature. `null` if no quote was obtained (e.g. a free endpoint or a failed call).
+</ResponseField>
+
+<ResponseField name="onChain" type="MirrorTransaction | null">
+  The full transaction record retrieved from the Hedera mirror node, including `result`, `consensus_timestamp`, and the `transfers` array. `null` if the transaction was not visible within 10 polling attempts, or if the call was not charged.
+</ResponseField>
+
+## HashScan Links
+
+Every successful payment produces a `hashscanUrl` you can open in a browser to inspect the full transaction detail:
+
+```
+https://hashscan.io/testnet/transaction/0.0.12345@1750000000.123456789
+```
+
+For mainnet payments, replace `testnet` with `mainnet`. HashScan shows the payer, receiver, amount, consensus timestamp, and transaction fee — a human-readable view of the same data `verifyOnChain` confirms programmatically.
+
+## Quote Signer Verification
+
+When you set `verifyQuoteSigner: true` on the `BuyerAgent` constructor, the agent performs an additional trust check before paying. After receiving a signed quote from the seller, it calls the mirror node to confirm that the `signerPublicKey` embedded in the quote is the active key of the seller's `payTo` account. This prevents a compromised or spoofed seller from directing payments to an account they do not control.
+
+```typescript title="verify-quote-signer.ts"
+const agent = new BuyerAgent({
+  // ...
+  verifyQuoteSigner: true, // one extra mirror node call per quote; strongly recommended
+});
+```
+
+If the check fails — for example because the quote was signed with a key that does not belong to the `payTo` account — the agent throws immediately with:
+
+```
+quote signer key is not the key of 0.0.4567890
+```
+
+No payment is attempted.
+
+<Note>
+  Hedera consensus is typically sub-second, but mirror node indexing takes a few seconds after a transaction reaches consensus. If `onChain` is `null` in a `PaidResult`, the payment did still succeed — open the `hashscanUrl` directly to confirm, or call `verifyOnChain` again after a short delay.
+</Note>

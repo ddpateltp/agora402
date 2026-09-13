@@ -1,0 +1,94 @@
+---
+title: "Paying for a request"
+description: "How an x402 call works against an Agora402 seller: the 402 challenge, the payment headers, quote pinning, settlement, and what you are never charged for."
+sidebarTitle: "Paying for a request"
+---
+
+Paid endpoints use the [x402 protocol](/integrations/x402). A call without payment is answered with `402 Payment Required` and a price; the same call with a signed Hedera payment attached is served and settled through the [Blocky402 facilitator](/integrations/blocky402). Nothing else changes about the request.
+
+## The handshake
+
+<Steps>
+  <Step title="Ask">
+    Send the request as you normally would. For `POST /v1/infer` that is the chat body; for `GET /v1/rates/hbar` nothing. Include `quoteId` if you hold a quote.
+  </Step>
+
+  <Step title="Receive the price">
+    The seller answers `402`. The `PAYMENT-REQUIRED` header is base64 JSON with the accepted payment options: scheme `exact`, the network, the asset, the amount in atomic units, the seller's `payTo` account and the facilitator. The JSON body repeats the endpoint id and a hint to negotiate.
+  </Step>
+
+  <Step title="Pay">
+    Build a Hedera `TransferTransaction` for exactly that amount to `payTo`, sign it with the buyer key, and encode it as the x402 payment payload. The facilitator co-signs as fee payer, so the buyer needs no HBAR for network fees beyond the price.
+  </Step>
+
+  <Step title="Retry">
+    Repeat the request with the payload in the `PAYMENT-SIGNATURE` header. The seller verifies it with the facilitator, runs the handler, settles, and answers `200` with `PAYMENT-RESPONSE` carrying the transaction id.
+  </Step>
+</Steps>
+
+## Headers
+
+| Header              | Direction | Content                                                                                  |
+| ------------------- | --------- | ---------------------------------------------------------------------------------------- |
+| `PAYMENT-REQUIRED`  | Response  | base64 JSON challenge on a `402`: accepted options with amount, asset, network, payTo    |
+| `PAYMENT-SIGNATURE` | Request   | base64 JSON payment payload built from the challenge. Legacy name `X-PAYMENT` also works |
+| `PAYMENT-RESPONSE`  | Response  | base64 JSON settlement result with the Hedera transaction id                             |
+| `x-agora-usage`     | Response  | Metering evidence the seller copies into the receipt, for example token counts           |
+
+## Pin the price with a quote
+
+The `402` price is computed from the request itself: token estimates for `per-token` endpoints, one unit for `per-unit` endpoints. To fix the amount in advance, call [`POST /a2a/quote`](/api/endpoints/quote) first and send `quoteId` in the body (POST) or as a query parameter (GET). The `402` then carries the quoted amount, and the quote is marked consumed when settlement succeeds, so it cannot be replayed for a second call.
+
+## You are not charged when
+
+* The handler returns any `4xx` or `5xx`. The middleware cancels settlement, so a model outage, an unreachable mirror node or a failed audit costs nothing.
+* The payment amount does not match the challenge, or the facilitator rejects the signature. The seller answers `402` again.
+* A quote has expired or was already consumed. The `402` falls back to the list price for the request; check the amount before signing.
+
+## Two ways to do this in code
+
+<Tabs>
+  <Tab title="BuyerAgent">
+    The SDK handles discovery, the quote, the payment and the retry, then verifies the settlement on the mirror node.
+
+    ```typescript
+    const result = await agent.infer('Explain x402 in one sentence', { maxTokens: 128, counterBps: 9000 });
+    console.log(result.body.choices[0].message.content);
+    console.log(result.amount, result.transactionId, result.hashscanUrl);
+    ```
+
+    Budgets are enforced before anything is signed: see [Spend controls](/buyer/budgets).
+  </Tab>
+
+  <Tab title="@x402/fetch">
+    Wrap `fetch` with the x402 client and the Hedera exact scheme. The wrapper reads `PAYMENT-REQUIRED`, signs the transfer with your key and retries.
+
+    ```typescript
+    import { wrapFetchWithPayment, x402Client } from '@x402/fetch';
+    import { ExactHederaScheme } from '@x402/hedera/exact/client';
+    import { createClientHederaSigner } from '@x402/hedera';
+
+    const signer = createClientHederaSigner('0.0.4009876', buyerPrivateKey, { network: 'hedera:testnet' });
+    const client = new x402Client().register('hedera:*', new ExactHederaScheme(signer));
+    const paidFetch = wrapFetchWithPayment(fetch, client);
+    const res = await paidFetch('http://localhost:4402/v1/rates/hbar', { method: 'GET' });
+    console.log(res.headers.get('PAYMENT-RESPONSE'));
+    ```
+  </Tab>
+
+  <Tab title="curl">
+    Without a payment you only get the price. Useful to inspect what a seller would charge for a body.
+
+    ```bash
+    curl -i -X POST http://localhost:4402/v1/infer \
+      -H 'content-type: application/json' \
+      -d '{"messages":[{"role":"user","content":"Hello"}],"max_tokens":64}'
+    # HTTP/1.1 402 Payment Required
+    # PAYMENT-REQUIRED: eyJ4NDAyVmVyc2lvbiI6Miw...
+    ```
+  </Tab>
+</Tabs>
+
+## After the call
+
+The seller writes a [receipt](/seller/receipts) with the transaction id, payer, amount, the path paid for, the metering evidence and a sha256 of the response body. Read it from [`GET /receipts`](/api/endpoints/receipts) or from the receipts topic on HCS, and confirm the transfer on the mirror node as described in [On-chain verification](/buyer/verification).

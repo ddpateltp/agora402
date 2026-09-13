@@ -1,0 +1,111 @@
+---
+title: "Buyer Agent: Discover, Negotiate, and Pay for Services"
+description: "BuyerAgent discovers services on the HCS registry, negotiates signed quotes, pays per request over x402, and verifies every settlement on-chain."
+sidebarTitle: "Overview"
+---
+
+The Agora402 `BuyerAgent` gives your AI agent a complete payment workflow without API keys or subscriptions. It reads available services from the Hedera Consensus Service registry, selects the cheapest matching seller, negotiates a signed price quote, and pays inside the HTTP request itself using the x402 protocol. After Blocky402 settles the transfer on Hedera, the agent polls the mirror node to confirm the transaction and returns a direct HashScan link — giving you a verifiable, on-chain receipt for every call.
+
+## What the Buyer Does
+
+The `BuyerAgent` performs five steps for every paid request:
+
+1. **Discovers** — reads the HCS registry topic via the public mirror node and retrieves every seller's listing (endpoints, pricing models, and agent identity).
+2. **Ranks** — computes the list price for your specific request from each seller's published pricing model and sorts cheapest first, all in BigInt atomic units with no floating point.
+3. **Negotiates** — sends a `POST /a2a/quote` to the chosen seller with your work estimate and an optional counter-offer ceiling. The seller responds with a signed, time-limited quote; the buyer verifies the signature and, when `verifyQuoteSigner` is enabled, confirms the signing key belongs to the seller's `payTo` account on the mirror node.
+4. **Pays** — calls the seller endpoint with the `quoteId`. The seller's x402 middleware returns `402 Payment Required`; `@x402/fetch` applies per-call and session spend controls, builds a partially signed Hedera `TransferTransaction`, and retries the request with `PAYMENT-SIGNATURE`. Blocky402 co-signs, pays the network fee, and submits to Hedera.
+5. **Verifies** — polls the Hedera mirror node until the settlement transaction appears, confirms the result is `SUCCESS`, and records the seller credit.
+
+## Two Modes
+
+<CardGroup cols={2}>
+  <Card title="SDK Mode" icon="code">
+    Import `BuyerAgent` from `@agora402/buyer` to embed the full payment workflow inside your own agent or service. You control event callbacks, inject a custom `Registry` instance, and access raw `PaidResult` data including the mirror node transaction record.
+  </Card>
+
+  <Card title="CLI Mode" icon="terminal">
+    Run `agora` commands via `npm run buyer -- <command>` for interactive exploration, scripted pipelines, or quick tests. The CLI supports `discover`, `infer`, `rate`, and `receipts` with `--json` output for machine consumption.
+  </Card>
+</CardGroup>
+
+## Constructor Options
+
+Create a `BuyerAgent` by passing a single options object. All amounts are **bigint atomic units** (tinybars for HBAR, or the smallest denomination of your chosen HTS token).
+
+| Option              | Type                      | Required | Default         | Description                                                                                                                                             |
+| ------------------- | ------------------------- | -------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `network`           | `'testnet' \| 'mainnet'`  | ✅        | —               | Hedera network to connect to.                                                                                                                           |
+| `accountId`         | `string`                  | ✅        | —               | Your Hedera account id in `shard.realm.num` format, e.g. `0.0.12345`.                                                                                   |
+| `privateKey`        | `string`                  | ✅        | —               | ECDSA private key for the buyer account (hex `0x…` or DER).                                                                                             |
+| `name`              | `string`                  | —        | `'agora-buyer'` | Human-readable name embedded in the buyer's UAID.                                                                                                       |
+| `maxPerCall`        | `bigint`                  | ✅        | —               | Hard cap on any single payment in atomic units. The x402 spend controls reject any `402` with `amount > maxPerCall` before signing.                     |
+| `sessionBudget`     | `bigint`                  | ✅        | —               | Total the agent may spend across all calls in this process lifetime. Any `402` that would exceed the remaining budget is rejected before signing.       |
+| `asset`             | `string`                  | —        | `'0.0.0'`       | Asset accepted for payment. `'0.0.0'` is native HBAR; pass an HTS token id (e.g. `'0.0.4567891'`) to use a custom settlement token.                     |
+| `registry`          | `Registry`                | —        | `undefined`     | A pre-configured `Registry` instance to read sellers from. If omitted, pass `--seller <url>` to target one seller directly.                             |
+| `fetchImpl`         | `typeof fetch`            | —        | `fetch`         | Custom `fetch` implementation to use for all HTTP calls. Useful for testing or environments where the global `fetch` is not available.                  |
+| `onEvent`           | `(e: AgentEvent) => void` | —        | `undefined`     | Callback invoked at every stage of the payment workflow (discovering, quoting, paying, verified, etc.). Use this to stream progress to your UI or logs. |
+| `verifyQuoteSigner` | `boolean`                 | —        | `false`         | When `true`, the agent calls the mirror node to confirm the quote's `signerPublicKey` controls the seller's `payTo` account before paying.              |
+
+## Methods at a Glance
+
+| Method                                | Description                                                                                                                                     |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `discover(endpointId, sellerUrl?)`    | Reads the HCS registry (or one seller's manifest) and returns all `Offer` objects that match the given endpoint id and asset.                   |
+| `rank(offers, estimate)`              | Prices every offer using the seller's published pricing model for your specific work estimate and sorts by ascending price.                     |
+| `quote(offer, estimate, maxAmount?)`  | Sends a quote request to the seller, verifies the signature, optionally checks the signer key on the mirror node, and returns a signed `Quote`. |
+| `call(offer, init, quote?)`           | Calls the paid endpoint, handles the `402` automatically, tracks spend, and returns a `PaidResult` with the settlement and mirror node record.  |
+| `infer(prompt, options?)`             | High-level: discover → rank → quote → call for the `infer` endpoint (LLM chat completion). Supports optional counter-offer and `--max-tokens`.  |
+| `hbarRate(options?)`                  | High-level: discover → rank → quote → call for the `hbar-rate` endpoint (HBAR/USD exchange rate feed).                                          |
+| `verifyOnChain(transactionId, payTo)` | Polls the mirror node up to 10 times (1.5 s apart) and returns the `MirrorTransaction` record once it appears.                                  |
+
+## TypeScript Example
+
+The example below constructs a `BuyerAgent` connected to a testnet registry and ready to spend up to 0.05 HBAR per call and 0.5 HBAR per session.
+
+```typescript title="agent-setup.ts"
+import { BuyerAgent } from '@agora402/buyer';
+import { Registry } from '@agora402/registry';
+
+const registry = new Registry({
+  network: 'testnet',
+  topicId: process.env.REGISTRY_TOPIC_ID!,
+});
+
+const agent = new BuyerAgent({
+  network: 'testnet',
+  accountId: process.env.BUYER_ACCOUNT_ID!,
+  privateKey: process.env.BUYER_PRIVATE_KEY!,
+  maxPerCall: 5_000_000n,     // 0.05 HBAR — reject any single payment over this
+  sessionBudget: 50_000_000n, // 0.5 HBAR — total session limit
+  registry,
+  verifyQuoteSigner: true,
+});
+
+// High-level: buy one inference call with a 90% counter-offer
+const result = await agent.infer('Explain x402 in one sentence', {
+  counterBps: 9000, // offer 90% of list price
+});
+
+console.log(result.body.choices[0].message.content);
+console.log(`Paid: ${result.amount} tinybars — ${result.hashscanUrl}`);
+```
+
+<Note>
+  Your `BUYER_ACCOUNT_ID` and `BUYER_PRIVATE_KEY` are created by running `npm run setup:buyer`, which funds the new account from your seller account. Do not use your seller key as the buyer key.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="CLI Reference" icon="terminal" href="/buyer/cli">
+    Full reference for `agora discover`, `agora infer`, `agora rate`, and `agora receipts`.
+  </Card>
+
+  <Card title="Spend Controls" icon="shield-check" href="/buyer/budgets">
+    Configure `maxPerCall` and `sessionBudget` to protect your agent's wallet.
+  </Card>
+
+  <Card title="On-Chain Verification" icon="link" href="/buyer/verification">
+    Understand how `verifyOnChain` works and how to interpret HashScan links.
+  </Card>
+</CardGroup>

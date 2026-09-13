@@ -1,0 +1,1152 @@
+openapi: 3.1.0
+info:
+  title: Agora402 seller API
+  version: 1.0.0
+  description: >-
+    HTTP API served by every Agora402 seller: free discovery documents, a free
+    quote endpoint, and paid endpoints gated by x402 and settled on Hedera through
+    the Blocky402 facilitator. Typical agent flow: getManifest (what is sold, at what
+    price, paid to which account) -> requestQuote (lock a signed price, counter below
+    list if you like) -> call the paid endpoint with the quoteId. The first call
+    answers 402 with a PAYMENT-REQUIRED header; the retry carries PAYMENT-SIGNATURE;
+    the response carries PAYMENT-RESPONSE with the Hedera transaction id. Then read
+    listReceipts or the seller's HCS receipts topic to audit what was charged. All
+    amounts are decimal strings in atomic units of the asset (tinybars for HBAR,
+    8 decimals); timestamps are ISO 8601 unless stated; quote expiry is unix seconds.
+servers:
+  - url: http://localhost:4402
+    description: Local services seller (npm run dev)
+  - url: http://localhost:4404
+    description: Local auditor (npm run dev)
+security: []
+tags:
+  - name: Discovery
+    description: Free documents that describe the seller. Read these before paying anyone.
+  - name: Negotiation
+    description: Free, signed, time-limited price quotes.
+  - name: Paid services
+    description: x402-gated endpoints. Every call is a Hedera micropayment.
+  - name: Trust
+    description: Paid audits of other sellers, attested on the HCS audit topic.
+  - name: Receipts
+    description: What this seller has been paid for.
+paths:
+  /.well-known/agora402.json:
+    get:
+      tags: [Discovery]
+      operationId: getManifest
+      summary: Seller manifest
+      description: >-
+        Call this before paying a seller. Returns the ServiceListing the seller also
+        publishes to the HCS registry: its HCS-14 identity (uaid), the account that
+        receives payments (payTo), the facilitator that settles, and every sellable
+        endpoint with its pricing model per accepted asset. Free, unauthenticated,
+        cached publicly for 60 seconds. A buyer that discovered the seller through the
+        registry should compare this document with the on-chain listing; an audit
+        attestation covers the hash of payTo, baseUrl, quotePath, facilitator and
+        endpoints, so any change here invalidates it.
+      x-mint:
+        href: /api/endpoints/manifest
+        metadata:
+          sidebarTitle: Seller manifest
+      responses:
+        '200':
+          description: The seller's ServiceListing
+          headers:
+            Cache-Control:
+              schema: { type: string }
+              description: public, max-age=60
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceListing'
+              example:
+                uaid: 'uaid:aid:2NEpo7TZRRrLZSi2U;uid=agora-demo-seller;registry=agora402;proto=a2a;nativeId=hedera:testnet:0.0.5001234;domain=localhost:4402'
+                name: agora-demo-seller
+                version: 1.0.0
+                payTo: '0.0.5001234'
+                baseUrl: http://localhost:4402
+                quotePath: /a2a/quote
+                facilitator: https://api.testnet.blocky402.com
+                receiptsTopicId: '0.0.6009999'
+                publishedAt: '2026-09-13T09:00:00.000Z'
+                endpoints:
+                  - id: infer
+                    method: POST
+                    path: /v1/infer
+                    description: 'LLM chat completion (OpenAI-compatible body). Metered: base fee + per 1k input tokens + per 1k budgeted output tokens.'
+                    skills: [0]
+                    accepts:
+                      - network: hedera:testnet
+                        asset: '0.0.0'
+                        symbol: HBAR
+                        decimals: 8
+                        pricing: { kind: per-token, base: '50000', inputPer1k: '20000', outputPer1k: '60000' }
+                  - id: hbar-rate
+                    method: GET
+                    path: /v1/rates/hbar
+                    description: Live HBAR/USD exchange rate from the Hedera network rate file, with consensus expiry. Priced per query.
+                    skills: [20]
+                    accepts:
+                      - network: hedera:testnet
+                        asset: '0.0.0'
+                        symbol: HBAR
+                        decimals: 8
+                        pricing: { kind: per-unit, unit: query, amountPerUnit: '10000' }
+  /.well-known/agent.json:
+    get:
+      tags: [Discovery]
+      operationId: getAgentCard
+      summary: A2A agent card
+      description: >-
+        An A2A-compatible agent card so generic A2A tooling can find the seller. The
+        x402 extension is marked required and carries the payment network, the
+        facilitator URL and the accepted asset symbols; a second, optional extension
+        points at the full Agora402 manifest. Skills mirror the manifest endpoints.
+        Free, unauthenticated.
+      x-mint:
+        href: /api/endpoints/agent-card
+        metadata:
+          sidebarTitle: Agent card
+      responses:
+        '200':
+          description: Agent card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentCard'
+              example:
+                name: agora-demo-seller
+                description: 'Agora402 seller: pay-per-request AI and data services on Hedera over x402.'
+                url: http://localhost:4402
+                version: 1.0.0
+                provider:
+                  organization: Agora402
+                  url: https://github.com/ddpateltp/agora402
+                uaid: 'uaid:aid:2NEpo7TZRRrLZSi2U;uid=agora-demo-seller;registry=agora402;proto=a2a;nativeId=hedera:testnet:0.0.5001234;domain=localhost:4402'
+                capabilities:
+                  streaming: false
+                  pushNotifications: false
+                  extensions:
+                    - uri: https://github.com/a2aproject/A2A/blob/main/docs/extensions/x402.md
+                      description: x402 micropayments settled on Hedera via Blocky402
+                      required: true
+                      params:
+                        payment_network: hedera:testnet
+                        facilitator: https://api.testnet.blocky402.com
+                        assets: [HBAR]
+                    - uri: http://localhost:4402/.well-known/agora402.json
+                      description: Agora402 listing with pricing models and quote endpoint
+                      required: false
+                skills:
+                  - id: infer
+                    name: infer
+                    description: LLM chat completion (OpenAI-compatible body). Metered per token.
+                    tags: [x402, hedera]
+                  - id: hbar-rate
+                    name: hbar-rate
+                    description: Live HBAR/USD exchange rate from the Hedera network rate file. Priced per query.
+                    tags: [x402, hedera]
+  /health:
+    get:
+      tags: [Discovery]
+      operationId: getHealth
+      summary: Health
+      description: >-
+        Liveness and configuration summary. receiptsToHcs false means the seller runs
+        without a receipts topic, so settled payments are only visible in listReceipts
+        for as long as the process lives; auditsToHcs false means an auditor's
+        attestations are dry runs and a buyer's trust policy will not see them.
+      x-mint:
+        href: /api/endpoints/health
+      responses:
+        '200':
+          description: Health
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+              example:
+                status: ok
+                uaid: 'uaid:aid:2NEpo7TZRRrLZSi2U;uid=agora-demo-seller;registry=agora402;proto=a2a;nativeId=hedera:testnet:0.0.5001234;domain=localhost:4402'
+                network: hedera:testnet
+                facilitator: https://api.testnet.blocky402.com
+                llm: groq
+                receiptsToHcs: true
+                role: services
+                auditsToHcs: false
+  /a2a/quote:
+    post:
+      tags: [Negotiation]
+      operationId: requestQuote
+      summary: Request a signed quote
+      description: >-
+        Ask the seller what one call will cost before paying. Free and unauthenticated.
+        The seller prices the estimate with the endpoint's pricing model and returns a
+        Quote signed by its Hedera account key, valid for about two minutes. Pass
+        maxAmount to counter below list price: the seller accepts any offer at or above
+        its floor (85% of list by default) and answers 409 with minimumAmount below it.
+        Put quote.quoteId in the body (POST) or query string (GET) of the paid request
+        and the 402 will carry exactly the agreed amount; a quote is consumed by the
+        settlement, so it cannot be replayed.
+      x-mint:
+        href: /api/endpoints/quote
+        metadata:
+          sidebarTitle: Request a quote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuoteRequest'
+            examples:
+              counter:
+                summary: Counter below list price
+                value:
+                  endpointId: infer
+                  estimate: { inputTokens: 120, maxOutputTokens: 256 }
+                  asset: '0.0.0'
+                  maxAmount: '60000'
+                  buyer: 'uaid:aid:9GvnzC1pJ7yA4WQ2E;uid=agora-buyer;registry=agora402;proto=a2a;nativeId=hedera:testnet:0.0.4009876'
+              list:
+                summary: Accept the list price
+                value:
+                  endpointId: hbar-rate
+                  estimate: { units: 1 }
+      responses:
+        '200':
+          description: Signed quote
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteResponse'
+              example:
+                quote:
+                  quoteId: q_5f1c2a9b7d3e4c6a8b0f1e2d
+                  seller: 'uaid:aid:2NEpo7TZRRrLZSi2U;uid=agora-demo-seller;registry=agora402;proto=a2a;nativeId=hedera:testnet:0.0.5001234;domain=localhost:4402'
+                  endpointId: infer
+                  network: hedera:testnet
+                  asset: '0.0.0'
+                  amount: '60000'
+                  expiresAt: 1789560120
+                  basis:
+                    pricing: { kind: per-token, base: '50000', inputPer1k: '20000', outputPer1k: '60000' }
+                    estimate: { inputTokens: 120, maxOutputTokens: 256 }
+                    listPrice: '67760'
+                    countered: true
+                    buyer: 'uaid:aid:9GvnzC1pJ7yA4WQ2E;uid=agora-buyer;registry=agora402;proto=a2a;nativeId=hedera:testnet:0.0.4009876'
+                  signature: 3045022100a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9002200f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0
+                  signerPublicKey: 302d300706052b8104000a032200027a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9
+                countered: true
+        '400':
+          description: Invalid body, or the endpoint does not accept the requested asset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteRejection'
+              examples:
+                invalid:
+                  value:
+                    error: invalid quote request
+                    issues:
+                      - code: invalid_type
+                        path: [endpointId]
+                        message: Required
+                asset:
+                  value:
+                    error: endpoint infer does not accept asset 0.0.7777
+        '404':
+          description: Unknown endpointId
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteRejection'
+              example:
+                error: unknown endpoint translate
+        '409':
+          description: Offer below the seller's floor. Raise maxAmount to at least minimumAmount, or omit it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteRejection'
+              example:
+                error: offer below floor
+                minimumAmount: '57596'
+                listPrice: '67760'
+  /v1/infer:
+    post:
+      tags: [Paid services]
+      operationId: infer
+      summary: Chat completion
+      description: >-
+        Paid LLM chat completion with an OpenAI-compatible body. Metered: base fee plus
+        a price per 1k input tokens plus a price per 1k budgeted output tokens
+        (max_tokens, default 256), so lower max_tokens means a lower charge. Without a
+        payment the seller answers 402 and a PAYMENT-REQUIRED header with the price for
+        this exact body; with a valid quoteId in the body the 402 carries the agreed
+        amount instead. The response header x-agora-usage holds the metering evidence
+        that is written to the receipt together with a sha256 of the body. A 5xx from the
+        model cancels settlement: failed calls are never charged.
+      x-mint:
+        href: /api/endpoints/infer
+        metadata:
+          sidebarTitle: Chat completion
+        content: |
+          <Note>
+            This endpoint is paid. Read [Paying for a request](/api/paying-for-a-request) for the 402 handshake, or let `BuyerAgent.infer()` handle it.
+          </Note>
+      parameters:
+        - $ref: '#/components/parameters/PaymentSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+            example:
+              messages:
+                - role: system
+                  content: Answer in one sentence.
+                - role: user
+                  content: Explain x402 in one sentence.
+              max_tokens: 128
+              quoteId: q_5f1c2a9b7d3e4c6a8b0f1e2d
+      responses:
+        '200':
+          description: Completion. Settlement succeeded; PAYMENT-RESPONSE carries the transaction.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: '#/components/headers/PaymentResponse'
+            x-agora-usage:
+              schema: { type: string }
+              description: 'JSON metering evidence: {"provider","model","inputTokens","outputTokens"}. Copied into the receipt.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCompletion'
+              example:
+                id: agora-m1x9k3z
+                object: chat.completion
+                model: llama-3.3-70b-versatile
+                choices:
+                  - index: 0
+                    message:
+                      role: assistant
+                      content: x402 lets an HTTP server answer 402 with a price and serve the retry once a micropayment has settled.
+                    finish_reason: stop
+                usage: { prompt_tokens: 21, completion_tokens: 27, total_tokens: 48 }
+                agora:
+                  seller: 'uaid:aid:2NEpo7TZRRrLZSi2U;uid=agora-demo-seller;registry=agora402;proto=a2a;nativeId=hedera:testnet:0.0.5001234;domain=localhost:4402'
+                  quoteId: q_5f1c2a9b7d3e4c6a8b0f1e2d
+        '400':
+          description: messages[] missing, empty, or not {role, content:string} with role in system|user|assistant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'messages[] of {role, content:string} required'
+        '402':
+          $ref: '#/components/responses/PaymentRequired'
+        '502':
+          description: The upstream model failed. Settlement is cancelled; nothing is charged.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: inference upstream failed
+  /v1/rates/hbar:
+    get:
+      tags: [Paid services]
+      operationId: getHbarRate
+      summary: HBAR/USD rate
+      description: >-
+        Paid, per query. Returns the HBAR/USD rate the Hedera network itself uses for
+        fees, read from the exchange rate file through the mirror node, with the
+        consensus expiry of that rate. Priced per unit with unit "query", so the 402
+        always asks for exactly one unit; pass quoteId as a query parameter to pin a
+        quote. A mirror node failure answers 502 and cancels settlement.
+      x-mint:
+        href: /api/endpoints/hbar-rate
+        metadata:
+          sidebarTitle: HBAR/USD rate
+        content: |
+          <Note>
+            This endpoint is paid. Read [Paying for a request](/api/paying-for-a-request) for the 402 handshake, or let `BuyerAgent.hbarRate()` handle it.
+          </Note>
+      parameters:
+        - name: quoteId
+          in: query
+          required: false
+          schema: { type: string }
+          description: Quote to pin the price to, from requestQuote with endpointId hbar-rate.
+        - $ref: '#/components/parameters/PaymentSignature'
+      responses:
+        '200':
+          description: Current rate
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: '#/components/headers/PaymentResponse'
+            x-agora-usage:
+              schema: { type: string }
+              description: Always {"units":1,"unit":"query"}.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateResponse'
+              example:
+                pair: HBAR/USD
+                usdPerHbar: 0.0627
+                centsPerHbar: 6.27
+                source: hedera network exchange rate file via mirror node
+                expirationTime: 1789563600
+                fetchedAt: '2026-09-13T12:34:56.789Z'
+                agora:
+                  seller: 'uaid:aid:2NEpo7TZRRrLZSi2U;uid=agora-demo-seller;registry=agora402;proto=a2a;nativeId=hedera:testnet:0.0.5001234;domain=localhost:4402'
+        '402':
+          $ref: '#/components/responses/PaymentRequired'
+        '502':
+          description: Mirror node unavailable. Settlement is cancelled; nothing is charged.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: rate source unavailable
+  /v1/audit:
+    post:
+      tags: [Trust]
+      operationId: requestAudit
+      summary: Audit a seller
+      description: >-
+        Paid, flat price (0.01 HBAR by default). Served by sellers running as auditor
+        (or both). The auditor fetches the subject's manifest, checks it against the
+        registry listing, probes the paid endpoints for payment integrity, reviews the
+        descriptions with an LLM, and writes audit_started, one audit_stage per stage and
+        a final attestation to the HCS audit topic, all paid by the auditor account.
+        Buyers accept the attestation only when the HCS payer equals auditorAccount and
+        contentHash matches the listing they hold. Send a fresh auditId (a_ plus 16 hex)
+        so you can follow streamAuditEvents while this request is open. Any failure
+        cancels settlement; an auditor refuses to attest itself.
+      x-mint:
+        href: /api/endpoints/audit
+        metadata:
+          sidebarTitle: Audit a seller
+        content: |
+          <Note>
+            This endpoint is paid. Read [Paying for a request](/api/paying-for-a-request) for the 402 handshake, or let `BuyerAgent.audit()` handle it.
+          </Note>
+      parameters:
+        - $ref: '#/components/parameters/PaymentSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditRequest'
+            examples:
+              bySubject:
+                summary: Subject from the registry
+                value:
+                  subject: 'uaid:aid:2NEpo7TZRRrLZSi2U;uid=agora-demo-seller;registry=agora402;proto=a2a;nativeId=hedera:testnet:0.0.5001234;domain=localhost:4402'
+                  auditId: a_3c9f1e7b2d5a8c04
+              byUrl:
+                summary: Subject by URL, no registry needed
+                value:
+                  sellerUrl: http://localhost:4402
+                  auditId: a_3c9f1e7b2d5a8c04
+      responses:
+        '200':
+          description: Completed audit with its attestation and, when recorded, the HCS records
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: '#/components/headers/PaymentResponse'
+            x-agora-usage:
+              schema: { type: string }
+              description: 'JSON {"auditId","subject","verdict","trustScore","stages"}.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditResponse'
+              example:
+                auditId: a_3c9f1e7b2d5a8c04
+                subject:
+                  uaid: 'uaid:aid:2NEpo7TZRRrLZSi2U;uid=agora-demo-seller;registry=agora402;proto=a2a;nativeId=hedera:testnet:0.0.5001234;domain=localhost:4402'
+                  name: agora-demo-seller
+                  payTo: '0.0.5001234'
+                attestation:
+                  v: 1
+                  type: attestation
+                  auditId: a_3c9f1e7b2d5a8c04
+                  subject: 'uaid:aid:2NEpo7TZRRrLZSi2U;uid=agora-demo-seller;registry=agora402;proto=a2a;nativeId=hedera:testnet:0.0.5001234;domain=localhost:4402'
+                  contentHash: 9f2c6a1e0b7d4c3a8e5f1d2b6c9a0e7f3d4b5a6c7e8f9a0b1c2d3e4f5a6b7c8d
+                  auditor: 'uaid:aid:5Rk2mQ8vLp3nXy7Wc;uid=agora-auditor;registry=agora402;proto=a2a;nativeId=hedera:testnet:0.0.5005678;domain=localhost:4404'
+                  auditorAccount: '0.0.5005678'
+                  verdict: safe
+                  trustScore: 96
+                  risk: low
+                  summary: Manifest matches the registry, payments settle to the listed account, descriptions are accurate.
+                  capabilities: [llm chat completion, hbar usd rate]
+                  findings:
+                    - severity: low
+                      title: Receipts topic not announced
+                      detail: The manifest omits receiptsTopicId, so buyers cannot audit past charges on HCS.
+                  model: llama-3.3-70b-versatile
+                  issuedAt: '2026-09-13T12:40:02.114Z'
+                stages:
+                  - v: 1
+                    type: audit_stage
+                    auditId: a_3c9f1e7b2d5a8c04
+                    subject: 'uaid:aid:2NEpo7TZRRrLZSi2U;uid=agora-demo-seller;registry=agora402;proto=a2a;nativeId=hedera:testnet:0.0.5001234;domain=localhost:4402'
+                    contentHash: 9f2c6a1e0b7d4c3a8e5f1d2b6c9a0e7f3d4b5a6c7e8f9a0b1c2d3e4f5a6b7c8d
+                    auditor: 'uaid:aid:5Rk2mQ8vLp3nXy7Wc;uid=agora-auditor;registry=agora402;proto=a2a;nativeId=hedera:testnet:0.0.5005678;domain=localhost:4404'
+                    auditorAccount: '0.0.5005678'
+                    stage: manifest
+                    index: 1
+                    total: 3
+                    summary: Manifest is consistent with the registry listing.
+                    findings: []
+                    model: deterministic
+                    completedAt: '2026-09-13T12:39:31.002Z'
+                    evidence: { registryMatch: true }
+                topicId: '0.0.6012345'
+                topicUrl: https://hashscan.io/testnet/topic/0.0.6012345
+                records:
+                  - transactionId: 0.0.5005678@1789560002.114000000
+                    sequenceNumber: 42
+                recorded: true
+        '400':
+          description: Bad or reused auditId, subject not found, subject lookup without a registry, or the auditor auditing itself
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                auditId:
+                  value: { error: auditId must be fresh and match a_<16 hex> }
+                self:
+                  value: { error: an auditor cannot attest itself }
+                subject:
+                  value: { error: subject (uaid) or sellerUrl required }
+        '402':
+          $ref: '#/components/responses/PaymentRequired'
+        '502':
+          description: The audit could not be completed. Settlement is cancelled; nothing is charged.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: audit could not be completed
+                detail: seller manifest 503 at http://localhost:4402
+  /v1/audits/{auditId}/events:
+    get:
+      tags: [Trust]
+      operationId: streamAuditEvents
+      summary: Audit progress stream
+      description: >-
+        Free. Newline-delimited JSON of one audit's events: everything recorded so far,
+        then live until the run ends with {"type":"end"}. Connect with the auditId you
+        generated before calling requestAudit; the stream waits up to 60 seconds for the
+        paid request to start and then ends with reason "unknown audit". Finished audits
+        stay readable for one hour.
+      x-mint:
+        href: /api/endpoints/audit-events
+        metadata:
+          sidebarTitle: Audit progress stream
+      parameters:
+        - name: auditId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^a_[0-9a-f]{16}$'
+          description: Audit id, a_ followed by 16 hex characters
+          example: a_3c9f1e7b2d5a8c04
+      responses:
+        '200':
+          description: NDJSON stream, one AuditEvent per line
+          content:
+            application/x-ndjson:
+              schema:
+                $ref: '#/components/schemas/AuditEvent'
+              example:
+                type: stage
+                stage: probes
+                index: 2
+                total: 3
+                status: running
+        '400':
+          description: auditId does not match a_<16 hex>
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: bad auditId
+  /receipts:
+    get:
+      tags: [Receipts]
+      operationId: listReceipts
+      summary: Recent receipts
+      description: >-
+        Free. The most recent settled payments this process has seen, newest first, each
+        with its HashScan link and, when the seller publishes to HCS, the topic sequence
+        number of the receipt message. This ring is in memory and bounded by uptime; the
+        permanent record is the receipts topic named in the manifest, which
+        ReceiptLedger.audit() cross-checks against the mirror node.
+      x-mint:
+        href: /api/endpoints/receipts
+        metadata:
+          sidebarTitle: Recent receipts
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+          description: Number of receipts to return, capped at 200
+      responses:
+        '200':
+          description: Receipts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReceiptsResponse'
+              example:
+                receipts:
+                  - receipt:
+                      v: 1
+                      type: receipt
+                      seller: 'uaid:aid:2NEpo7TZRRrLZSi2U;uid=agora-demo-seller;registry=agora402;proto=a2a;nativeId=hedera:testnet:0.0.5001234;domain=localhost:4402'
+                      transactionId: 0.0.4009876@1789560131.552341000
+                      network: hedera:testnet
+                      payer: '0.0.4009876'
+                      payTo: '0.0.5001234'
+                      asset: '0.0.0'
+                      amount: '60000'
+                      resource: /v1/infer
+                      quoteId: q_5f1c2a9b7d3e4c6a8b0f1e2d
+                      usage: { provider: groq, model: llama-3.3-70b-versatile, inputTokens: 21, outputTokens: 27 }
+                      responseHash: 6a1f0c3e9b2d4a7c8e5f1b0d2c3a4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d
+                      issuedAt: '2026-09-13T12:35:33.910Z'
+                    hashscanTxUrl: https://hashscan.io/testnet/transaction/0.0.4009876@1789560131.552341000
+                    hcs:
+                      transactionId: 0.0.5001234@1789560134.001200000
+                      sequenceNumber: 118
+                      topicUrl: https://hashscan.io/testnet/topic/0.0.6009999
+components:
+  parameters:
+    PaymentSignature:
+      name: PAYMENT-SIGNATURE
+      in: header
+      required: false
+      schema: { type: string }
+      description: >-
+        x402 payment payload (base64 JSON) built from the PAYMENT-REQUIRED challenge of
+        the 402 answer. Omit on the first call to receive the price. BuyerAgent and
+        @x402/fetch set this for you. The legacy name X-PAYMENT is also accepted.
+  headers:
+    PaymentResponse:
+      schema: { type: string }
+      description: >-
+        x402 settlement result (base64 JSON) including the Hedera transaction id, e.g.
+        0.0.4009876@1789560131.552341000. Look it up on HashScan or through the mirror node.
+  responses:
+    PaymentRequired:
+      description: >-
+        No valid payment attached. The PAYMENT-REQUIRED header carries the x402 challenge
+        (scheme exact, network, asset, amount, payTo, facilitator). Build the payment,
+        retry with PAYMENT-SIGNATURE.
+      headers:
+        PAYMENT-REQUIRED:
+          schema: { type: string }
+          description: base64 JSON x402 challenge with the accepted payment options for this exact request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PaymentRequiredBody'
+          example:
+            error: payment required
+            endpoint: infer
+            hint: 'POST /a2a/quote with {"endpointId":"infer"} to negotiate, then retry with the quoteId'
+            quoteId: null
+  schemas:
+    HederaEntityId:
+      type: string
+      pattern: '^\d+\.\d+\.\d+$'
+      description: Hedera entity id, shard.realm.num
+      example: '0.0.5001234'
+    Amount:
+      type: string
+      pattern: '^\d+$'
+      description: Atomic units of the asset as a decimal string (tinybars for HBAR). Never a float.
+      example: '60000'
+    Uaid:
+      type: string
+      pattern: '^uaid:'
+      description: HCS-14 universal agent id
+      example: 'uaid:aid:2NEpo7TZRRrLZSi2U;uid=agora-demo-seller;registry=agora402;proto=a2a;nativeId=hedera:testnet:0.0.5001234;domain=localhost:4402'
+    Network:
+      type: string
+      enum: [hedera:testnet, hedera:mainnet]
+      description: CAIP-2 network id
+    PricingModel:
+      description: How an endpoint is priced. Amounts are atomic units of the payment option's asset.
+      oneOf:
+        - title: flat
+          type: object
+          required: [kind, amount]
+          properties:
+            kind: { type: string, enum: [flat], description: Fixed price per request }
+            amount: { $ref: '#/components/schemas/Amount' }
+        - title: per-token
+          type: object
+          required: [kind, base, inputPer1k, outputPer1k]
+          properties:
+            kind: { type: string, enum: [per-token], description: Base fee plus input and budgeted output tokens }
+            base: { $ref: '#/components/schemas/Amount', description: Charged once per request }
+            inputPer1k: { $ref: '#/components/schemas/Amount', description: 'Per 1,000 input tokens, rounded up' }
+            outputPer1k: { $ref: '#/components/schemas/Amount', description: 'Per 1,000 output tokens, budgeted from max_tokens, rounded up' }
+        - title: per-unit
+          type: object
+          required: [kind, unit, amountPerUnit]
+          properties:
+            kind: { type: string, enum: [per-unit], description: 'Price times units, at least one unit' }
+            unit: { type: string, description: 'Unit label, e.g. query, second, kb' }
+            amountPerUnit: { $ref: '#/components/schemas/Amount' }
+      discriminator:
+        propertyName: kind
+    PaymentOptionSpec:
+      type: object
+      description: One way to pay for an endpoint
+      required: [network, asset, symbol, decimals, pricing]
+      properties:
+        network: { $ref: '#/components/schemas/Network' }
+        asset: { $ref: '#/components/schemas/HederaEntityId', description: '0.0.0 is native HBAR, otherwise an HTS token id' }
+        symbol: { type: string, description: 'Human label, e.g. HBAR or TOLL' }
+        decimals: { type: integer, minimum: 0, maximum: 18, description: 8 for HBAR }
+        pricing: { $ref: '#/components/schemas/PricingModel' }
+    EndpointSpec:
+      type: object
+      description: One sellable endpoint
+      required: [id, method, path, description, accepts]
+      properties:
+        id: { type: string, description: 'Stable id inside the service, used as endpointId in quotes, e.g. infer' }
+        method: { type: string, enum: [GET, POST] }
+        path: { type: string, description: 'Path relative to baseUrl, starts with /' }
+        description: { type: string }
+        skills:
+          type: array
+          items: { type: integer, minimum: 0 }
+          description: 'HCS-14 / OASF skill codes: 0 text generation, 20 data retrieval, 40 assessment'
+        accepts:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/PaymentOptionSpec' }
+    ServiceListing:
+      type: object
+      description: What a seller publishes to the registry topic and serves as its manifest
+      required: [uaid, name, version, payTo, baseUrl, facilitator, endpoints, publishedAt]
+      properties:
+        uaid: { $ref: '#/components/schemas/Uaid' }
+        name: { type: string }
+        version: { type: string }
+        payTo: { $ref: '#/components/schemas/HederaEntityId', description: Account that receives payments }
+        baseUrl: { type: string, format: uri }
+        quotePath: { type: string, default: /a2a/quote, description: 'A2A-style quote endpoint, relative to baseUrl' }
+        facilitator: { type: string, format: uri, description: Blocky402 facilitator that verifies and settles }
+        endpoints:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/EndpointSpec' }
+        receiptsTopicId: { $ref: '#/components/schemas/HederaEntityId', description: HCS topic where the seller writes receipts; absent when receipts stay in memory }
+        publishedAt: { type: string, format: date-time }
+    AgentCard:
+      type: object
+      description: A2A agent card with the x402 extension
+      required: [name, description, url, version, provider, uaid, capabilities, skills]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        url: { type: string, format: uri }
+        version: { type: string }
+        provider:
+          type: object
+          properties:
+            organization: { type: string }
+            url: { type: string, format: uri }
+        uaid: { $ref: '#/components/schemas/Uaid' }
+        capabilities:
+          type: object
+          properties:
+            streaming: { type: boolean, description: Always false }
+            pushNotifications: { type: boolean, description: Always false }
+            extensions:
+              type: array
+              items:
+                type: object
+                properties:
+                  uri: { type: string, format: uri }
+                  description: { type: string }
+                  required: { type: boolean }
+                  params:
+                    type: object
+                    description: For the x402 extension payment_network, facilitator and assets
+                    additionalProperties: true
+        skills:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              description: { type: string }
+              tags: { type: array, items: { type: string } }
+    Health:
+      type: object
+      required: [status, uaid, network, facilitator, llm, receiptsToHcs, role, auditsToHcs]
+      properties:
+        status: { type: string, enum: [ok] }
+        uaid: { $ref: '#/components/schemas/Uaid' }
+        network: { $ref: '#/components/schemas/Network' }
+        facilitator: { type: string, format: uri }
+        llm: { type: string, description: 'LLM provider name: groq, anthropic or mock' }
+        receiptsToHcs: { type: boolean, description: true when receipts are published to the receipts topic }
+        role: { type: string, enum: [services, auditor, both], description: Which endpoints this process sells }
+        auditsToHcs: { type: boolean, description: true when audits are recorded on the audit topic }
+    QuoteRequest:
+      type: object
+      required: [endpointId]
+      properties:
+        endpointId: { type: string, description: 'id of the endpoint in the manifest, e.g. infer or hbar-rate' }
+        estimate:
+          type: object
+          description: The work to price. Which fields matter depends on the pricing model kind.
+          properties:
+            inputTokens: { type: integer, minimum: 0, description: 'per-token models, about 4 characters per token' }
+            maxOutputTokens: { type: integer, minimum: 0, description: 'per-token models, the max_tokens you will send' }
+            units: { type: integer, minimum: 0, description: 'per-unit models, defaults to 1' }
+        maxAmount:
+          type: string
+          pattern: '^\d+$'
+          description: Your ceiling in atomic units. At or above list you pay list; between floor and list the seller accepts your counter; below floor you get 409.
+        asset:
+          type: string
+          pattern: '^\d+\.\d+\.\d+$'
+          default: '0.0.0'
+          description: Asset to pay in. 0.0.0 is HBAR.
+        buyer: { type: string, description: 'Your uaid, informational, echoed in basis.buyer' }
+    Quote:
+      type: object
+      description: A priced, time-limited offer signed by the seller account key
+      required: [quoteId, seller, endpointId, network, asset, amount, expiresAt, basis, signature, signerPublicKey]
+      properties:
+        quoteId: { type: string, minLength: 8, description: q_ followed by 24 hex. Send it with the paid request. }
+        seller: { $ref: '#/components/schemas/Uaid' }
+        endpointId: { type: string }
+        network: { $ref: '#/components/schemas/Network' }
+        asset: { $ref: '#/components/schemas/HederaEntityId' }
+        amount: { $ref: '#/components/schemas/Amount', description: Exactly what the 402 will ask for when the quote is used }
+        expiresAt: { type: integer, description: Unix seconds. About 120 seconds after issue. }
+        basis:
+          type: object
+          additionalProperties: true
+          description: What the price covers, for auditability. The seller includes pricing, estimate, listPrice, countered and buyer.
+        signature: { type: string, description: 'Hex ECDSA or ED25519 signature over the canonical quote body (sorted keys, everything but signature and signerPublicKey)' }
+        signerPublicKey: { type: string, description: Hex DER public key of the seller account. Verify it matches the account in payTo. }
+    QuoteResponse:
+      type: object
+      required: [quote, countered]
+      properties:
+        quote: { $ref: '#/components/schemas/Quote' }
+        countered: { type: boolean, description: true when the seller accepted your maxAmount below list price }
+    QuoteRejection:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+        issues:
+          type: array
+          description: Zod validation issues, only on invalid bodies
+          items:
+            type: object
+            additionalProperties: true
+        minimumAmount: { type: string, pattern: '^\d+$', description: The least the seller will take (409 only) }
+        listPrice: { type: string, pattern: '^\d+$', description: Undiscounted price (409 only) }
+    ChatRequest:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [role, content]
+            properties:
+              role: { type: string, enum: [system, user, assistant] }
+              content: { type: string }
+        max_tokens: { type: integer, default: 256, description: 'Output budget. Priced up front per 1k, so lower is cheaper.' }
+        temperature: { type: number, description: Passed to the model when present }
+        quoteId: { type: string, description: Quote to pin the price to. Consumed by settlement. }
+    ChatCompletion:
+      type: object
+      description: OpenAI-compatible chat.completion with an agora block
+      required: [id, object, model, choices, usage, agora]
+      properties:
+        id: { type: string }
+        object: { type: string, enum: [chat.completion] }
+        model: { type: string, description: Model id reported by the upstream provider }
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              index: { type: integer }
+              message:
+                type: object
+                properties:
+                  role: { type: string, enum: [assistant] }
+                  content: { type: string }
+              finish_reason: { type: string }
+        usage:
+          type: object
+          properties:
+            prompt_tokens: { type: integer }
+            completion_tokens: { type: integer }
+            total_tokens: { type: integer }
+        agora:
+          type: object
+          properties:
+            seller: { $ref: '#/components/schemas/Uaid' }
+            quoteId: { type: [string, 'null'], description: 'The quote consumed, or null at list price' }
+    RateResponse:
+      type: object
+      required: [pair, usdPerHbar, centsPerHbar, source, expirationTime, fetchedAt, agora]
+      properties:
+        pair: { type: string, enum: [HBAR/USD] }
+        usdPerHbar: { type: number, description: centsPerHbar / 100 }
+        centsPerHbar: { type: number, description: cent_equivalent / hbar_equivalent from the network exchange rate file }
+        source: { type: string }
+        expirationTime: { type: integer, description: Unix seconds at which the network rate expires }
+        fetchedAt: { type: string, format: date-time }
+        agora:
+          type: object
+          properties:
+            seller: { $ref: '#/components/schemas/Uaid' }
+    PaymentRequiredBody:
+      type: object
+      required: [error, endpoint, hint, quoteId]
+      properties:
+        error: { type: string, enum: [payment required] }
+        endpoint: { type: string, description: endpointId of the resource }
+        hint: { type: string }
+        quoteId: { type: [string, 'null'], description: 'The quoteId you sent, if any' }
+    Receipt:
+      type: object
+      description: Written to the receipts topic after every settled payment
+      required: [v, type, seller, transactionId, network, payer, payTo, asset, amount, resource, usage, issuedAt]
+      properties:
+        v: { type: integer, enum: [1] }
+        type: { type: string, enum: [receipt] }
+        seller: { $ref: '#/components/schemas/Uaid' }
+        transactionId: { type: string, description: 'Hedera transaction id of the settlement, 0.0.x@seconds.nanos' }
+        network: { $ref: '#/components/schemas/Network' }
+        payer: { $ref: '#/components/schemas/HederaEntityId', description: Buyer account debited }
+        payTo: { $ref: '#/components/schemas/HederaEntityId', description: Seller account credited }
+        asset: { $ref: '#/components/schemas/HederaEntityId' }
+        amount: { $ref: '#/components/schemas/Amount' }
+        resource: { type: string, description: Path that was paid for }
+        quoteId: { type: string }
+        usage:
+          type: object
+          additionalProperties: true
+          description: Metering evidence copied from the x-agora-usage response header
+        responseHash: { type: string, description: sha256 hex of the response body delivered }
+        issuedAt: { type: string, format: date-time }
+    StoredReceipt:
+      type: object
+      required: [receipt, hashscanTxUrl]
+      properties:
+        receipt: { $ref: '#/components/schemas/Receipt' }
+        hashscanTxUrl: { type: string, format: uri }
+        hcs:
+          description: HCS publication result, filled in asynchronously; absent while pending or when receipts stay in memory
+          oneOf:
+            - type: object
+              title: published
+              required: [transactionId, sequenceNumber, topicUrl]
+              properties:
+                transactionId: { type: string }
+                sequenceNumber: { type: integer }
+                topicUrl: { type: string, format: uri }
+            - type: object
+              title: failed
+              required: [error]
+              properties:
+                error: { type: string }
+    ReceiptsResponse:
+      type: object
+      required: [receipts]
+      properties:
+        receipts:
+          type: array
+          items: { $ref: '#/components/schemas/StoredReceipt' }
+    AuditRequest:
+      type: object
+      description: Name the subject by uaid (needs a registry on the auditor) or by URL
+      properties:
+        subject: { type: string, description: 'uaid or listing name of the seller to audit, resolved through the registry' }
+        sellerUrl: { type: string, format: uri, description: Base URL of the seller; its manifest is fetched directly }
+        auditId: { type: string, pattern: '^a_[0-9a-f]{16}$', description: Fresh id you generate so you can stream progress while the request is open }
+        quoteId: { type: string, description: Quote to pin the price to }
+    Severity:
+      type: string
+      enum: [none, low, medium, high, critical]
+    AuditFinding:
+      type: object
+      required: [severity, title]
+      properties:
+        severity: { $ref: '#/components/schemas/Severity' }
+        title: { type: string }
+        detail: { type: string }
+    AuditStage:
+      type: object
+      description: One completed stage, as written to the audit topic
+      required: [v, type, auditId, subject, contentHash, auditor, auditorAccount, stage, index, total, summary, findings, model, completedAt]
+      properties:
+        v: { type: integer, enum: [1] }
+        type: { type: string, enum: [audit_stage] }
+        auditId: { type: string }
+        subject: { $ref: '#/components/schemas/Uaid' }
+        contentHash: { type: string, pattern: '^[0-9a-f]{64}$', description: 'sha256 of the audited listing content (payTo, baseUrl, quotePath, facilitator, endpoints)' }
+        auditor: { $ref: '#/components/schemas/Uaid' }
+        auditorAccount: { $ref: '#/components/schemas/HederaEntityId' }
+        stage: { type: string }
+        index: { type: integer, minimum: 1 }
+        total: { type: integer, minimum: 1 }
+        summary: { type: string }
+        findings:
+          type: array
+          items: { $ref: '#/components/schemas/AuditFinding' }
+        model: { type: string, description: 'LLM that produced the stage, or deterministic' }
+        completedAt: { type: string, format: date-time }
+        evidence:
+          type: object
+          additionalProperties: true
+          description: Raw observations behind the stage (response only, not written to HCS)
+    Attestation:
+      type: object
+      description: The verdict, written last to the audit topic by the auditor account
+      required: [v, type, auditId, subject, contentHash, auditor, auditorAccount, verdict, trustScore, risk, summary, capabilities, findings, model, issuedAt]
+      properties:
+        v: { type: integer, enum: [1] }
+        type: { type: string, enum: [attestation] }
+        auditId: { type: string }
+        subject: { $ref: '#/components/schemas/Uaid' }
+        contentHash: { type: string, pattern: '^[0-9a-f]{64}$' }
+        auditor: { $ref: '#/components/schemas/Uaid' }
+        auditorAccount: { $ref: '#/components/schemas/HederaEntityId', description: Must equal the HCS payer of the message for a buyer to accept it }
+        verdict: { type: string, enum: [safe, dangerous], description: dangerous when any finding is high or critical }
+        trustScore: { type: integer, minimum: 0, maximum: 100, description: '100 minus penalties: low 4, medium 12, high 30, critical 60. Buyers default to a minimum of 70.' }
+        risk: { $ref: '#/components/schemas/Severity', description: Highest severity across stages }
+        summary: { type: string }
+        capabilities: { type: array, items: { type: string } }
+        findings:
+          type: array
+          items: { $ref: '#/components/schemas/AuditFinding' }
+        model: { type: string }
+        issuedAt: { type: string, format: date-time }
+    AuditResponse:
+      type: object
+      required: [auditId, subject, attestation, stages, topicId, topicUrl, records, recorded]
+      properties:
+        auditId: { type: string }
+        subject:
+          type: object
+          properties:
+            uaid: { $ref: '#/components/schemas/Uaid' }
+            name: { type: string }
+            payTo: { $ref: '#/components/schemas/HederaEntityId' }
+        attestation: { $ref: '#/components/schemas/Attestation' }
+        stages:
+          type: array
+          items: { $ref: '#/components/schemas/AuditStage' }
+        topicId: { type: [string, 'null'], description: 'Audit topic, null on a dry run' }
+        topicUrl: { type: [string, 'null'], format: uri }
+        records:
+          type: array
+          description: HCS publication results for audit_started, each stage and the attestation; empty on a dry run
+          items:
+            type: object
+            additionalProperties: true
+        recorded: { type: boolean, description: true when the trail was written to HCS }
+    AuditEvent:
+      description: One line of the audit progress stream
+      oneOf:
+        - title: started
+          type: object
+          required: [type, message]
+          properties:
+            type: { type: string, enum: [started] }
+            message: { type: object, additionalProperties: true, description: The audit_started message }
+        - title: stage running
+          type: object
+          required: [type, stage, index, total, status]
+          properties:
+            type: { type: string, enum: [stage] }
+            stage: { type: string }
+            index: { type: integer }
+            total: { type: integer }
+            status: { type: string, enum: [running] }
+        - title: stage done
+          type: object
+          required: [type, stage, index, total, status, message, evidence]
+          properties:
+            type: { type: string, enum: [stage] }
+            stage: { type: string }
+            index: { type: integer }
+            total: { type: integer }
+            status: { type: string, enum: [done] }
+            message: { $ref: '#/components/schemas/AuditStage' }
+            evidence: { type: object, additionalProperties: true }
+        - title: attestation
+          type: object
+          required: [type, message]
+          properties:
+            type: { type: string, enum: [attestation] }
+            message: { $ref: '#/components/schemas/Attestation' }
+        - title: recorded
+          type: object
+          required: [type, what, transactionId, sequenceNumber]
+          properties:
+            type: { type: string, enum: [recorded] }
+            what: { type: string, enum: [audit_started, audit_stage, attestation] }
+            stage: { type: string }
+            transactionId: { type: string }
+            sequenceNumber: { type: integer }
+        - title: record failed
+          type: object
+          required: [type, what, error]
+          properties:
+            type: { type: string, enum: [record_failed] }
+            what: { type: string, enum: [audit_started, audit_stage, attestation] }
+            stage: { type: string }
+            error: { type: string }
+        - title: end
+          type: object
+          required: [type]
+          properties:
+            type: { type: string, enum: [end] }
+            reason: { type: string, description: unknown audit when no run appeared within 60 seconds }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string, description: Human-readable reason }
+        detail: { type: string }

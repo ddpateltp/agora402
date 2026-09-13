@@ -1,0 +1,165 @@
+---
+title: "Quote Negotiation: How Sellers Price and Sign Requests"
+description: "Agora402 sellers respond to A2A-style quote requests with a signed, time-limited Quote. Buyers can counter below list price down to the seller's floor."
+sidebarTitle: "Quotes"
+---
+
+Before committing to a payment, a buyer can ask your seller for a firm price — a signed, time-limited **Quote** that locks in the exact amount for a specific piece of work. This handshake protects both sides: the buyer knows exactly what it will pay before submitting a transaction, and you as the seller have cryptographically bound the buyer's request to a price you approved. The quote endpoint is free to call, so buyers are encouraged to negotiate before every paid request.
+
+## Quote Flow
+
+The negotiation follows four steps:
+
+1. **Buyer sends a quote request.** The buyer POSTs to your `/a2a/quote` endpoint, describing the work it wants done (token estimates, unit count) and optionally naming a maximum amount it is willing to pay.
+2. **Seller prices the work.** Your seller calls `priceFor(model, estimate)` using the pricing model defined for the requested endpoint, producing the list price in atomic units.
+3. **Seller signs and returns the Quote.** The seller signs the canonical quote body with its Hedera account key and returns the `Quote` object. The `countered` flag tells the buyer whether the seller accepted a counter-offer below list price.
+4. **Buyer verifies the signature.** The buyer checks the quote signature against `signerPublicKey`, then queries the Hedera mirror node to confirm that `signerPublicKey` is the active key for the `payTo` account named in the listing. This proves the quote was issued by the entity that owns the payment destination.
+
+## Request Format
+
+Send a JSON body to `POST /a2a/quote`:
+
+<ParamField body="buyer" type="string">
+  Your UAID (e.g. `uaid:aid:...`). Optional — provided for the seller's information and recorded in logs, but not required for the quote to be processed.
+</ParamField>
+
+<ParamField body="endpointId" type="string" required>
+  The stable identifier of the endpoint you want to call, as declared in the seller's `ServiceListing`. For example: `"infer"` or `"hbar-rate"`.
+</ParamField>
+
+<ParamField body="estimate" type="object">
+  Your estimate of the work to be done. The seller uses this to compute the price. All sub-fields are optional and default to `0` (or `1` for units).
+
+  <Expandable title="estimate fields">
+    <ParamField body="estimate.inputTokens" type="integer">
+      Estimated number of input tokens in your request body. Use `estimateChatInput()` from `@agora402/shared` to compute this from your messages array.
+    </ParamField>
+
+    <ParamField body="estimate.maxOutputTokens" type="integer">
+      The `max_tokens` budget you plan to pass to the endpoint. Used as the output cost basis for per-token pricing.
+    </ParamField>
+
+    <ParamField body="estimate.units" type="integer">
+      Number of discrete units for per-unit pricing endpoints (e.g. number of queries). Minimum 1.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="maxAmount" type="string">
+  Your ceiling price in atomic units of `asset` (e.g. `"9000000"` for 0.09 HBAR). If you pass this and it is below the seller's list price, the seller treats it as a counter-offer. Omit to accept the list price.
+</ParamField>
+
+<ParamField body="asset" type="string" default="0.0.0">
+  The HTS asset ID to pay with. `"0.0.0"` means native HBAR. Must match one of the `accepts` entries on the endpoint.
+</ParamField>
+
+## Response Format
+
+A successful `200` response body:
+
+<ResponseField name="quote" type="Quote object" required>
+  The signed quote. Pass `quote.quoteId` in your payment request body to pin the payment to this quoted amount.
+
+  <Expandable title="Quote fields">
+    <ResponseField name="quoteId" type="string">
+      Unique identifier for this quote (at least 8 characters). Pass this as `quoteId` in your paid request body to use the quoted price instead of the live list price.
+    </ResponseField>
+
+    <ResponseField name="seller" type="string">
+      The seller's UAID (`uaid:aid:...`). Matches the `uaid` in the seller's `ServiceListing`.
+    </ResponseField>
+
+    <ResponseField name="endpointId" type="string">
+      The endpoint this quote is valid for.
+    </ResponseField>
+
+    <ResponseField name="network" type="string">
+      The Hedera CAIP-2 network identifier: `"hedera:testnet"` or `"hedera:mainnet"`.
+    </ResponseField>
+
+    <ResponseField name="asset" type="string">
+      The asset ID the quote is denominated in (e.g. `"0.0.0"` for HBAR).
+    </ResponseField>
+
+    <ResponseField name="amount" type="string">
+      The agreed price in atomic units as a decimal string (e.g. `"8500000"`). This is the exact amount that will appear in the `402` challenge when you submit the request with `quoteId`.
+    </ResponseField>
+
+    <ResponseField name="expiresAt" type="integer">
+      Unix timestamp (seconds) after which the quote is no longer valid. Submit your payment before this time.
+    </ResponseField>
+
+    <ResponseField name="basis" type="object">
+      The estimate and pricing inputs the seller used to compute `amount`, echoed back for auditability. Useful for verifying the seller priced what you described.
+    </ResponseField>
+
+    <ResponseField name="signature" type="string">
+      Hex-encoded ECDSA or ED25519 signature over the canonical quote body, produced by the seller's Hedera account key.
+    </ResponseField>
+
+    <ResponseField name="signerPublicKey" type="string">
+      Hex-encoded DER public key that produced `signature`. Verify this key is the active key of the seller's `payTo` account on the mirror node.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="countered" type="boolean" required>
+  `true` if the seller accepted a counter-offer below its list price. `false` if the returned `amount` equals the seller's computed list price. Use this to know whether you negotiated a discount.
+</ResponseField>
+
+## Counter-Offers
+
+If you pass a `maxAmount` below the seller's list price, the seller's quote engine compares your ceiling against an internal floor:
+
+* **Above the floor** — the seller accepts your counter. The quote `amount` is set to your `maxAmount` and `countered` is `true`.
+* **Below the floor** — the seller rejects with `HTTP 409 Conflict`. The response body includes `minimumAmount` (the seller's floor) and `listPrice` so you can see the range and decide whether to retry at a higher ceiling.
+
+```json title="HTTP 409 response when counter is below the floor"
+{
+  "error": "counter below floor",
+  "minimumAmount": "7000000",
+  "listPrice": "10000000"
+}
+```
+
+## Using a Quote in a Paid Request
+
+Once you have a quote, include `quoteId` in the JSON body of your paid request. The seller's middleware reads `quoteId` from the request body and uses `quote.amount` as the `402` challenge price instead of re-computing the live price from the request:
+
+```typescript title="Requesting a quote and using it"
+// Step 1: request the quote
+const resp = await fetch('http://localhost:4402/a2a/quote', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({
+    endpointId: 'infer',
+    estimate: { inputTokens: 120, maxOutputTokens: 256 },
+    asset: '0.0.0',
+    maxAmount: '9000000',  // counter at slightly below list price
+  }),
+});
+const { quote, countered } = await resp.json();
+console.log(`Quoted ${quote.amount} tinybars (countered: ${countered})`);
+
+// Step 2: use the quoteId in the paid request body
+const inferResp = await fetch('http://localhost:4402/v1/infer', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({
+    quoteId: quote.quoteId,          // pins payment to the quoted amount
+    messages: [
+      { role: 'user', content: 'Explain x402 in one sentence.' },
+    ],
+    max_tokens: 256,
+  }),
+  // @x402/fetch intercepts the 402 and attaches the payment automatically
+});
+```
+
+<Warning>
+  Quotes are **single-use and time-limited**. You must submit your payment request before `expiresAt` (a Unix timestamp in seconds). Once a quote is consumed by a settled payment, it cannot be reused — submit a new quote request for your next call. If your request arrives after `expiresAt`, the seller will re-price it at the current list price instead of the quoted amount.
+</Warning>
+
+<Tip>
+  If you skip the quote step entirely, the seller prices the request live from the request body using `priceFor`. This is perfectly valid — quoting is optional, not mandatory. Use quotes when you need budget predictability or want to lock in a negotiated discount before committing.
+</Tip>

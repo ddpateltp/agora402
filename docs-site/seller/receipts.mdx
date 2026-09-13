@@ -1,0 +1,129 @@
+---
+title: "On-Chain Receipts: Audit Every Settled Payment on HCS"
+description: "Agora402 sellers write a receipt to an HCS topic after every settled payment. Receipts carry metering evidence and a response hash for billing audits."
+sidebarTitle: "Receipts"
+---
+
+Every time a buyer successfully pays for a request, your seller automatically writes a **Receipt** to an HCS topic. Receipts are append-only, publicly readable Hedera Consensus Service messages that record what was paid, who paid it, what was delivered, and how much compute was consumed. Any party — the buyer, a third-party auditor, or an automated agent — can read the receipts topic from the public mirror node and verify every line of your billing history against the actual on-chain transactions.
+
+## What a Receipt Contains
+
+Each receipt is written as a JSON message to the HCS receipts topic. The table below describes every field:
+
+| Field           | Type   | Description                                                                                                                  |
+| --------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `v`             | number | Schema version, always `1`                                                                                                   |
+| `type`          | string | Message type, always `"receipt"`                                                                                             |
+| `seller`        | string | The seller's UAID (`uaid:aid:...`) — identifies who issued this receipt                                                      |
+| `transactionId` | string | The Hedera transaction ID of the settlement (e.g. `0.0.12345@1700000000.123456789`)                                          |
+| `network`       | string | CAIP-2 network identifier: `"hedera:testnet"` or `"hedera:mainnet"`                                                          |
+| `payer`         | string | Hedera account ID of the buyer who paid (e.g. `0.0.67890`)                                                                   |
+| `payTo`         | string | Hedera account ID that received the payment — your seller account                                                            |
+| `asset`         | string | Settlement asset: `0.0.0` for HBAR, or an HTS token ID                                                                       |
+| `amount`        | string | Amount paid in atomic units (tinybars for HBAR), as a decimal string                                                         |
+| `resource`      | string | The endpoint path that was paid for (e.g. `/v1/infer`)                                                                       |
+| `quoteId`       | string | The `quoteId` used to pin this payment, if a quote was negotiated; omitted otherwise                                         |
+| `usage`         | object | Metering evidence — for LLM inference: `inputTokens`, `outputTokens`, `model`, `provider`; for rate queries: `units`, `unit` |
+| `responseHash`  | string | SHA-256 hex digest of the response body — proves what content was delivered                                                  |
+| `issuedAt`      | string | ISO 8601 timestamp when the receipt was written                                                                              |
+
+## How Receipts Are Written
+
+Your seller writes receipts automatically — you do not take any manual action. The flow is:
+
+<Steps>
+  <Step title="Buyer submits a paid request">
+    The buyer attaches a signed `TransferTransaction` to the request. Your middleware forwards it to Blocky402 for verification.
+  </Step>
+
+  <Step title="Handler runs successfully">
+    Your endpoint handler (e.g. `/v1/infer`) processes the request and returns a `2xx` response. A `4xx` or `5xx` cancels settlement — failed requests are never charged and no receipt is written.
+  </Step>
+
+  <Step title="Blocky402 settles the transaction">
+    The middleware calls Blocky402 `/settle`. Blocky402 co-signs the transaction as fee payer and submits it to Hedera. The response carries the final transaction ID.
+  </Step>
+
+  <Step title="Seller assembles and writes the receipt">
+    After settlement is confirmed, the seller reads the `x-agora-usage` header (token counts or unit counts) from the buffered response and computes the SHA-256 hash of the response body. It assembles the completed receipt and submits it to the HCS receipts topic.
+  </Step>
+</Steps>
+
+<Note>
+  Receipts are written to the HCS topic identified by `RECEIPTS_TOPIC_ID` in your `.env`. Run `npm run setup:topics` to create this topic before starting the seller for the first time.
+</Note>
+
+## Read Recent Receipts via the API
+
+Your seller also keeps an in-memory list of recent receipts for quick inspection. Query it with:
+
+```
+GET /receipts?limit=N
+```
+
+* `limit` — number of receipts to return (default `50`, maximum `200`)
+
+Example response:
+
+```json title="GET /receipts response"
+{
+  "receipts": [
+    {
+      "v": 1,
+      "type": "receipt",
+      "seller": "uaid:aid:AbCdEfGh1234...;uid=...;registry=agora402;proto=a2a;nativeId=hedera:testnet:0.0.12345",
+      "transactionId": "0.0.12345@1700000000.123456789",
+      "network": "hedera:testnet",
+      "payer": "0.0.67890",
+      "payTo": "0.0.12345",
+      "asset": "0.0.0",
+      "amount": "1000000",
+      "resource": "/v1/infer",
+      "quoteId": "q_9f3a2bc1",
+      "usage": {
+        "provider": "groq",
+        "model": "openai/gpt-oss-20b",
+        "inputTokens": 38,
+        "outputTokens": 22
+      },
+      "responseHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "issuedAt": "2025-01-15T10:30:00.000Z"
+    }
+  ]
+}
+```
+
+<Note>
+  The in-memory receipt list is cleared when the seller restarts. For a complete, persistent audit trail, read receipts directly from the HCS topic using the CLI described below.
+</Note>
+
+## Audit Receipts with the CLI
+
+The `agora receipts` command reads every receipt from the HCS topic, cross-checks each `transactionId` against the Hedera mirror node, and reports whether the on-chain transfer matches what the receipt claims:
+
+```bash title="Terminal"
+agora receipts --topic <RECEIPTS_TOPIC_ID> [--seller-account <0.0.x>]
+```
+
+| Flag                    | Description                                                   |
+| ----------------------- | ------------------------------------------------------------- |
+| `--topic <ID>`          | The HCS receipts topic ID to read from (e.g. `0.0.4567891`)   |
+| `--seller-account <ID>` | Optional. Flag any receipt not written by this Hedera account |
+
+Example output:
+
+```
+Receipts topic 0.0.4567891  https://hashscan.io/testnet/topic/0.0.4567891
+OK   #1 0.0.4567890@1700000000.123456789  0.01 HBAR  0.0.12345 -> 0.0.54321  /v1/infer
+1 receipt(s), 1 match the chain, total 0.01 HBAR
+```
+
+Each line prefixed `OK` means the mirror node confirms a successful `TransferTransaction` with the payer, payee, asset, and amount matching what the receipt records. A `FAIL` prefix indicates a discrepancy — along with a description of what did not match.
+
+<Tip>
+  Pass `--seller-account <0.0.x>` to verify receipt authorship. The audit checks that each receipt message was submitted to HCS by the expected seller account. Any receipt written by a different account is flagged, protecting buyers from tampered receipts injected into the topic by a third party.
+</Tip>
+
+## Verifying a Single Receipt Manually
+
+You can also verify any individual receipt by taking its `transactionId` to [HashScan](https://hashscan.io/testnet) directly. Look up the transaction and confirm that the HBAR (or HTS token) transfer matches the `payer`, `payTo`, and `amount` fields in the receipt.

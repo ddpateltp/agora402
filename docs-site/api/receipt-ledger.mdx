@@ -1,0 +1,206 @@
+---
+title: "ReceiptLedger: Read and Audit On-Chain Payment Receipts"
+description: "ReceiptLedger reads receipts from an HCS topic and cross-checks each against the mirror node transaction to verify payment amounts and account ownership."
+sidebarTitle: "ReceiptLedger"
+---
+
+Every time a seller settles a payment, it writes a signed `Receipt` message to a dedicated HCS topic. The `ReceiptLedger` class reads those messages and, when you call `audit()`, cross-checks each receipt against the actual Hedera transaction on the mirror node. This gives both buyers and sellers a tamper-evident, on-chain billing trail that neither party can retroactively alter — without storing any data in a centralised database.
+
+## Installation and Import
+
+```typescript
+import { ReceiptLedger } from '@agora402/registry';
+```
+
+## Constructor
+
+```typescript
+const ledger = new ReceiptLedger({
+  network: 'testnet',
+  topicId: process.env.RECEIPTS_TOPIC_ID!,
+});
+```
+
+### Options
+
+<ParamField path="network" type="'testnet' | 'mainnet'" required>
+  The Hedera network the receipts topic lives on. Controls which mirror node is queried when `mirrorUrl` is not set.
+</ParamField>
+
+<ParamField path="topicId" type="string" required>
+  The HCS topic ID where the seller publishes receipts, in `shard.realm.num` format. You can find this value in the seller's `ServiceListing.receiptsTopicId` field.
+</ParamField>
+
+<ParamField path="mirrorUrl" type="string">
+  Override the Hedera mirror node REST base URL. Defaults to the standard Hashio endpoint for the chosen network.
+</ParamField>
+
+<ParamField path="fetchImpl" type="typeof fetch">
+  Custom `fetch` implementation. Defaults to the global `fetch`. Useful in test environments or when routing through a proxy.
+</ParamField>
+
+## Methods
+
+### `list(opts?)`
+
+```typescript
+await ledger.list({ timestamp? }): Promise<Array<{
+  receipt: Receipt;
+  consensusTimestamp: string;
+  sequenceNumber: number;
+  payerAccountId: string;
+}>>
+```
+
+Reads all valid `Receipt` messages from the HCS topic. Messages that do not parse as a `Receipt` are skipped silently.
+
+<ParamField path="opts.timestamp" type="string">
+  Filter to messages whose HCS consensus timestamp is strictly after this value. Use the ISO-style consensus timestamp string returned by a previous call (e.g. `"1700000000.123456789"`) to page forward through the log incrementally.
+</ParamField>
+
+Each item in the returned array contains:
+
+<ResponseField name="receipt" type="Receipt">
+  The parsed receipt object. See the Receipt fields reference below.
+</ResponseField>
+
+<ResponseField name="consensusTimestamp" type="string">
+  The HCS consensus timestamp at which the receipt message was finalised, in Hedera's `seconds.nanoseconds` format.
+</ResponseField>
+
+<ResponseField name="sequenceNumber" type="number">
+  The topic sequence number of this message. Sequence numbers are monotonically increasing, so you can use them to detect gaps.
+</ResponseField>
+
+<ResponseField name="payerAccountId" type="string">
+  The Hedera account that paid for the HCS message. Cross-check this against `receipt.payTo` to verify that the seller, not an impersonator, wrote this receipt.
+</ResponseField>
+
+***
+
+### `audit(opts?)`
+
+```typescript
+await ledger.audit({ timestamp?, expectedSellerAccount? }): Promise<VerifiedReceipt[]>
+```
+
+Calls `list()` internally, then fetches the corresponding Hedera transaction from the mirror node for each receipt and verifies that the on-chain transfer matches the receipt's claimed `payer`, `payTo`, `asset`, and `amount`. Use this method for reconciliation, dispute resolution, or automated billing checks.
+
+<ParamField path="opts.timestamp" type="string">
+  Passed through to `list()`. Limits the audit to receipts after the given consensus timestamp.
+</ParamField>
+
+<ParamField path="opts.expectedSellerAccount" type="string">
+  When set, flags any receipt written by an HCS payer that is not this account ID. Catches receipts that were injected by a third party into the topic.
+</ParamField>
+
+## `VerifiedReceipt` Fields
+
+<ResponseField name="receipt" type="Receipt">
+  The original parsed receipt. See the Receipt fields reference below.
+</ResponseField>
+
+<ResponseField name="consensusTimestamp" type="string">
+  The HCS consensus timestamp of the receipt message.
+</ResponseField>
+
+<ResponseField name="sequenceNumber" type="number">
+  The topic sequence number of the receipt message.
+</ResponseField>
+
+<ResponseField name="transaction" type="MirrorTransaction | null">
+  The settlement transaction as returned by the mirror node, or `null` if the transaction was not found. A `null` here means the transaction has not been indexed yet or the `transactionId` in the receipt is incorrect.
+</ResponseField>
+
+<ResponseField name="matchesChain" type="boolean">
+  `true` when the on-chain transfer fully matches the receipt: the correct asset was transferred, the right amount was credited to `payTo`, and the right amount was debited from `payer`. `false` if any check failed or the transaction was not found.
+</ResponseField>
+
+<ResponseField name="problems" type="string[]">
+  A human-readable list of every discrepancy found during verification. An empty array means the receipt is clean. Possible entries include credit shortfall amounts, debit shortfall amounts, unexpected transaction results, and missing transactions.
+</ResponseField>
+
+<Warning>
+  A `matchesChain: false` result means the on-chain Hedera transfer does not match what the receipt claims. This could indicate a data error, a race condition (the transaction has not propagated to the mirror node yet), or deliberate fraud. Always inspect the `problems` array for the specific discrepancies before taking action, and re-run the audit a few seconds later before concluding the receipt is fraudulent.
+</Warning>
+
+## `Receipt` Fields
+
+<Expandable title="Receipt object shape">
+  <ResponseField name="v" type="1">
+    Schema version. Always `1` in the current protocol.
+  </ResponseField>
+
+  <ResponseField name="type" type="'receipt'">
+    Message type discriminant. Always `'receipt'`.
+  </ResponseField>
+
+  <ResponseField name="seller" type="string">
+    The HCS-14 UAID of the seller that issued this receipt, e.g. `uaid:aid:...`.
+  </ResponseField>
+
+  <ResponseField name="transactionId" type="string">
+    The Hedera transaction ID of the settlement, in the format `shard.realm.num@seconds.nanoseconds`, e.g. `0.0.12345@1700000000.123456789`.
+  </ResponseField>
+
+  <ResponseField name="network" type="'hedera:testnet' | 'hedera:mainnet'">
+    The CAIP-2 network identifier on which the payment was settled.
+  </ResponseField>
+
+  <ResponseField name="payer" type="string">
+    The Hedera account ID of the buyer that made the payment, in `shard.realm.num` format.
+  </ResponseField>
+
+  <ResponseField name="payTo" type="string">
+    The Hedera account ID that received the payment — the seller's receiving account.
+  </ResponseField>
+
+  <ResponseField name="asset" type="string">
+    The asset used for payment. `'0.0.0'` for native HBAR; an HTS token ID (e.g. `'0.0.4567'`) for token payments.
+  </ResponseField>
+
+  <ResponseField name="amount" type="string">
+    The payment amount in atomic units as a decimal string — tinybars for HBAR, or the token's smallest unit for HTS tokens. Stored as a string to avoid floating-point precision loss.
+  </ResponseField>
+
+  <ResponseField name="resource" type="string">
+    The endpoint path that was paid for, e.g. `/v1/infer` or `/v1/rates/hbar`. Provides a human-readable record of what service was delivered.
+  </ResponseField>
+
+  <ResponseField name="quoteId" type="string">
+    Optional. The quote ID from the negotiation handshake, if a quote was used. Links this receipt back to the agreed price.
+  </ResponseField>
+
+  <ResponseField name="usage" type="object">
+    Metering evidence recorded by the seller, e.g. `{ prompt_tokens: 80, completion_tokens: 120 }`. The shape is service-defined.
+  </ResponseField>
+
+  <ResponseField name="responseHash" type="string">
+    Optional. A SHA-256 hex digest of the response body. Allows a buyer to prove the exact content that was delivered in exchange for the payment.
+  </ResponseField>
+
+  <ResponseField name="issuedAt" type="string">
+    ISO 8601 timestamp at which the seller generated the receipt.
+  </ResponseField>
+</Expandable>
+
+## Example: Audit All Receipts for a Seller Account
+
+```typescript
+const ledger = new ReceiptLedger({
+  network: 'testnet',
+  topicId: process.env.RECEIPTS_TOPIC_ID!,
+});
+
+const results = await ledger.audit({
+  expectedSellerAccount: '0.0.54321',
+});
+
+for (const r of results) {
+  const status = r.matchesChain ? 'OK' : 'FAIL';
+  console.log(
+    `${status} #${r.sequenceNumber} ${r.receipt.transactionId}  ${r.receipt.amount} ${r.receipt.asset}`
+  );
+  if (r.problems.length > 0) console.log('  Problems:', r.problems);
+}
+```

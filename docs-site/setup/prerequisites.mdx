@@ -1,0 +1,75 @@
+---
+title: "Prerequisites: What You Need Before Running Agora402"
+description: "Everything you need before running Agora402: Node.js 20+, a Hedera testnet ECDSA account, and an optional LLM API key for inference."
+sidebarTitle: "Prerequisites"
+---
+
+Before you install Agora402, make sure your development environment meets the requirements below. Most of the setup takes only a few minutes: Node.js and Git are standard tools you likely already have, a free Hedera testnet account takes under two minutes to create, and the buyer account is provisioned for you automatically during setup. LLM credentials are optional — a built-in mock mode lets you explore the full payment flow without any inference key.
+
+## Software Requirements
+
+You need the following tools installed on your machine before proceeding.
+
+| Tool           | Minimum Version    | Notes                                                                                      |
+| -------------- | ------------------ | ------------------------------------------------------------------------------------------ |
+| **Node.js**    | 20+                | Includes `npm`. Install from [nodejs.org](https://nodejs.org) or via your version manager. |
+| **npm**        | Bundled with Node  | Used for workspace commands like `npm run setup:buyer`.                                    |
+| **TypeScript** | —                  | Listed as a `devDependency`; installed automatically by `npm install`.                     |
+| **Git**        | Any recent version | Required to clone the repository.                                                          |
+
+<Tip>
+  Use a version manager such as [nvm](https://github.com/nvm-sh/nvm) or [fnm](https://github.com/Schindua/fnm) to keep Node pinned to 20+ without affecting other projects.
+</Tip>
+
+## Hedera Testnet Account
+
+Agora402 runs on the Hedera network. You need one ECDSA-keyed testnet account before you start — this becomes the **seller** account that receives payments and signs registry messages. The **buyer** account is created for you automatically later by `npm run setup:buyer`.
+
+<Steps>
+  <Step title="Create a free testnet account">
+    Go to [portal.hedera.com](https://portal.hedera.com) and sign up or log in. The portal's built-in faucet provides free testnet HBAR — no credit card or mainnet funds required.
+  </Step>
+
+  <Step title="Choose ECDSA key type">
+    When the portal prompts you for a key type, select **ECDSA**. Agora402's payment flow uses `@x402/hedera`, which requires ECDSA keys for signing Hedera `TransferTransaction` objects.
+  </Step>
+
+  <Step title="Download your credentials">
+    Copy the **Account ID** (in the format `0.0.xxxxx`) and the **ECDSA private key** (a hex string beginning with `0x`). Store them securely — you will paste them into your `.env` file in the next section.
+  </Step>
+</Steps>
+
+<Note>
+  You only need to create this one account manually. The buyer account is generated from it by `npm run setup:buyer`, which transfers 100 HBAR from the seller to fund the new account.
+</Note>
+
+## LLM Provider (Optional)
+
+Agora402's inference endpoint (`POST /v1/infer`) acts as a paid LLM proxy. You can connect it to a real model or run in `mock` mode with no external credentials.
+
+Set the `LLM_PROVIDER` environment variable to choose your provider, then supply the matching key and model identifier:
+
+| Variable            | Purpose                                                                                                      |
+| ------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `LLM_PROVIDER`      | `groq`, `anthropic`, or `mock`                                                                               |
+| `GROQ_API_KEY`      | Required when `LLM_PROVIDER=groq`. Get a free key at [console.groq.com](https://console.groq.com).           |
+| `GROQ_MODEL`        | Model identifier for Groq, e.g. `openai/gpt-oss-20b`.                                                        |
+| `ANTHROPIC_API_KEY` | Required when `LLM_PROVIDER=anthropic`. Get a key at [console.anthropic.com](https://console.anthropic.com). |
+| `ANTHROPIC_MODEL`   | Model identifier for Anthropic, e.g. `claude-sonnet-4-5`.                                                    |
+
+<Tip>
+  Set `LLM_PROVIDER=mock` to test the full discover → quote → pay → receipt flow without consuming any inference credits or needing an API key.
+</Tip>
+
+## Blocky402 Facilitator
+
+Every x402 payment goes through the **Blocky402** facilitator, which co-signs the `TransferTransaction` as the network fee payer and submits it to Hedera.
+
+* **Testnet:** The hosted facilitator at `https://api.testnet.blocky402.com` requires no API key and is configured as the default in `.env.example`. No account or sign-up is needed.
+* **Mainnet:** Use `https://api.blocky402.com` with a Blocky402 API key, and set `HEDERA_NETWORK=mainnet` together with mainnet account credentials.
+
+For all development and testing, the testnet facilitator is all you need.
+
+<Warning>
+  Never commit your `.env` file or private keys to version control. Add `.env` to your `.gitignore` before your first commit and keep your ECDSA private keys out of any shared repository, log file, or public paste.
+</Warning>

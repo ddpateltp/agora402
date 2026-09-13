@@ -1,0 +1,127 @@
+---
+title: "Seller Pricing Models: Flat, Per-Token, and Per-Unit"
+description: "Configure how Agora402 charges buyers: flat fee, per-token (input + output), or per-unit pricing. All amounts are BigInt with no floating-point rounding."
+sidebarTitle: "Pricing models"
+---
+
+Pricing in Agora402 is declared in your `ServiceListing` and computed deterministically by the shared `priceFor(model, estimate)` function. Every endpoint in your listing carries a `PricingModel` that maps a `WorkEstimate` — token counts or discrete units — to an exact amount in atomic units of the settlement asset. The same function runs on both the seller and the buyer side, so both parties can independently verify what a request should cost before any payment is committed.
+
+## Pricing Model Types
+
+Agora402 supports three pricing model kinds. Choose the one that best matches how your endpoint consumes resources.
+
+### Flat Pricing
+
+Flat pricing charges the same fixed amount for every request, regardless of payload size or output length. Use it for endpoints where cost does not vary per call.
+
+```json title="Flat pricing model"
+{
+  "kind": "flat",
+  "amount": "1000000"
+}
+```
+
+`amount` is the exact number of atomic units (tinybars for HBAR) charged per request. There are no variables — every call to the endpoint costs exactly this amount.
+
+### Per-Token Pricing
+
+Per-token pricing is designed for LLM inference endpoints. It charges a base fee once per request, then adds a cost proportional to the number of input tokens and the number of output tokens budgeted.
+
+```json title="Per-token pricing model"
+{
+  "kind": "per-token",
+  "base": "500000",
+  "inputPer1k": "200000",
+  "outputPer1k": "400000"
+}
+```
+
+The price formula is:
+
+```
+price = base
+      + ceil(inputTokens  × inputPer1k  / 1000)
+      + ceil(maxOutputTokens × outputPer1k / 1000)
+```
+
+All division rounds **up** to the nearest atomic unit, ensuring the seller is never undercharged by truncation. The `maxOutputTokens` value comes from the `max_tokens` field of the request body — it is a budget, not an actual count, so the price is deterministic before the response is produced.
+
+Before issuing a `402` challenge, the seller calls `estimateChatInput(body)` from the shared package to read `messages` from the request body and compute `inputTokens` and `maxOutputTokens`. This means two prompts of different lengths receive different 402 amounts on the same endpoint.
+
+### Per-Unit Pricing
+
+Per-unit pricing is suited for data or compute endpoints that can be quantified in discrete countable units — queries, seconds, kilobytes, and so on.
+
+```json title="Per-unit pricing model"
+{
+  "kind": "per-unit",
+  "unit": "query",
+  "amountPerUnit": "50000000"
+}
+```
+
+The price is `amountPerUnit × units`, with a minimum of 1 unit. If the buyer's estimate does not specify `units`, the seller defaults to 1. The `unit` field is a human-readable label recorded in the receipt's `usage` field for auditing purposes.
+
+## Understanding Atomic Units and HBAR
+
+All `amount` fields in pricing models are **decimal strings** representing atomic units of the settlement asset:
+
+* For native HBAR: 1 HBAR = **100,000,000 tinybars** (8 decimal places)
+* For HTS tokens: atomic units depend on the token's `decimals` setting
+
+Use `formatAmount` from the shared package to convert atomic amounts to human-readable strings for display:
+
+```typescript title="Formatting amounts for display"
+import { formatAmount } from '@agora402/shared';
+
+formatAmount(1000000n, 8, 'HBAR')   // → "0.01 HBAR"
+formatAmount(100000000n, 8, 'HBAR') // → "1 HBAR"
+formatAmount(50000000n, 8, 'HBAR')  // → "0.5 HBAR"
+```
+
+And to parse a human-readable string back into atomic units without floating-point loss:
+
+```typescript title="Parsing amounts without floats"
+import { parseAmount } from '@agora402/shared';
+
+parseAmount('0.05', 8)  // → 5000000n  (tinybars)
+parseAmount('1.5', 8)   // → 150000000n
+```
+
+## Pricing Model Reference
+
+<Accordion title="PricingModel type definition">
+  ```typescript
+  type PricingModel =
+    | { kind: 'flat'; amount: string }
+    | {
+        kind: 'per-token';
+        base: string;
+        inputPer1k: string;
+        outputPer1k: string;
+      }
+    | { kind: 'per-unit'; unit: string; amountPerUnit: string };
+  ```
+
+  All `string` fields that represent amounts must be non-negative decimal integers with no leading zeros (e.g. `"1000000"`, not `"1_000_000"` or `"1e6"`).
+</Accordion>
+
+<Accordion title="WorkEstimate type definition">
+  ```typescript
+  interface WorkEstimate {
+    inputTokens?: number;     // estimated input token count
+    maxOutputTokens?: number; // budgeted output tokens (from max_tokens)
+    units?: number;           // discrete units for per-unit pricing
+  }
+  ```
+
+  All fields are optional. Missing fields default to `0` for per-token pricing and `1` for per-unit pricing.
+</Accordion>
+
+<Tip>
+  Both the seller and the buyer run the identical `priceFor(model, estimate)` function from `@agora402/shared`. A buyer can compute the expected price from the published `ServiceListing` before it even sends a quote request. This makes pricing transparent, reproducible, and trustworthy — no hidden mark-ups, no server-side overrides.
+</Tip>
+
+<Note>
+  All pricing arithmetic uses native JavaScript `BigInt`. Floating-point numbers never touch monetary amounts anywhere in the stack. This eliminates rounding errors that could silently over- or under-charge buyers across thousands of micro-payments.
+</Note>

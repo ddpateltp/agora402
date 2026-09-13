@@ -1,0 +1,94 @@
+---
+title: "Blocky402 Facilitator: Settle x402 Payments on Hedera"
+description: "Blocky402 is the x402 facilitator for Hedera. It co-signs TransferTransactions as fee payer, submits them to the network, and returns the transaction ID."
+sidebarTitle: "Blocky402"
+---
+
+Every Hedera transaction must be paid for by an account holding HBAR — the fee payer. In a standard x402 flow the buyer would need to hold HBAR just to cover the network fee on top of the actual service payment. Blocky402 removes that friction by acting as a co-signing fee payer: the buyer signs only their own transfer, Blocky402 adds the fee-payer signature, and submits the fully signed transaction to Hedera. The buyer only needs to hold the payment asset (HBAR or an HTS token), not a separate HBAR reserve for fees.
+
+## What Blocky402 Does
+
+Blocky402 is the x402 facilitator for Hedera. It sits between the seller's `@x402/express` middleware and the Hedera network and handles two responsibilities:
+
+1. **Verify** — before the seller runs your request, Blocky402 receives the partially signed `TransferTransaction`, checks the buyer's signature, confirms the transfer amounts match the `PAYMENT-REQUIRED` terms, and reports the payer account to the seller. No funds move at this stage.
+2. **Settle** — after the seller's handler returns a successful response, Blocky402 co-signs the same transaction as the Hedera fee payer and submits it to Hedera. It returns the confirmed transaction ID, which the seller embeds in the `PAYMENT-RESPONSE` header.
+
+<Note>
+  The buyer never interacts with Blocky402 directly. Your `@x402/fetch` client talks only to the seller. The seller's middleware handles all calls to Blocky402 on your behalf.
+</Note>
+
+## Why a Facilitator
+
+Hedera requires every `TransferTransaction` to carry the signature of the account paying the consensus fee. Without a facilitator, every buyer would need to pre-fund an HBAR balance separately from their service payment budget, then sign twice — once for the transfer and once for the fee. Blocky402 consolidates this:
+
+* The buyer signs only the value transfer (buyer → seller).
+* Blocky402 holds an HBAR account and co-signs as the fee payer.
+* The facilitator covers the Hedera network fee on the buyer's behalf.
+
+This design means a buyer agent can operate with a single asset balance and a single signing key. On testnet, the facilitator is hosted and free to use. On mainnet, Blocky402 charges a small service fee covered by the API key arrangement.
+
+## Endpoints
+
+The seller middleware calls these two endpoints automatically. You configure Blocky402 by pointing `FACILITATOR_URL` to the correct host — the rest is handled by `@x402/express`.
+
+<Accordion title="POST /verify">
+  Receives the partially signed `TransferTransaction` encoded in the `PAYMENT-SIGNATURE` header. Blocky402 decodes the transaction bytes, verifies the buyer's ECDSA signature over the transaction body, confirms the transfer amounts and asset match the `PAYMENT-REQUIRED` terms, checks the buyer account balance on the Hedera network, and returns the verified payer account ID.
+
+  If verification fails for any reason — wrong signature, insufficient balance, mismatched amounts — Blocky402 returns an error and the seller does not run the handler. The buyer is not charged.
+</Accordion>
+
+<Accordion title="POST /settle">
+  Called only after the seller handler returns a successful (`2xx`) response. Blocky402 retrieves the previously verified transaction, adds its fee-payer signature, and submits the fully signed transaction to Hedera consensus. It returns a `SettleResponse` containing:
+
+  * `success: true`
+  * `transaction` — the Hedera transaction ID (e.g., `0.0.12345@1700000000.000000001`)
+  * `amount` — the settled amount in atomic units
+  * `payer` — the buyer's Hedera account ID
+
+  The seller receives this response and writes the receipt to HCS.
+</Accordion>
+
+## Testnet vs. Mainnet
+
+Choose the environment that matches your `HEDERA_NETWORK` setting. Set `FACILITATOR_URL` in your `.env` file to the corresponding URL.
+
+|                | Testnet                             | Mainnet                     |
+| -------------- | ----------------------------------- | --------------------------- |
+| **URL**        | `https://api.testnet.blocky402.com` | `https://api.blocky402.com` |
+| **API Key**    | Not required                        | Required                    |
+| **HBAR**       | Free testnet HBAR                   | Real HBAR                   |
+| **Settlement** | Hedera testnet                      | Hedera mainnet              |
+
+```bash title=".env — testnet configuration (default)"
+FACILITATOR_URL=https://api.testnet.blocky402.com
+HEDERA_NETWORK=testnet
+```
+
+```bash title=".env — mainnet configuration"
+FACILITATOR_URL=https://api.blocky402.com
+HEDERA_NETWORK=mainnet
+# BLOCKY402_API_KEY=your-api-key-here   (set by the seller service)
+```
+
+<Warning>
+  Switching to mainnet means real HBAR and real value transfers. Make sure your seller and buyer accounts are properly funded on Hedera mainnet before running `npm run seller` or any buyer commands. Testnet accounts and testnet HBAR are not valid on mainnet.
+</Warning>
+
+## How Settlement Appears On-Chain
+
+After Blocky402 settles a transaction, the buyer agent queries the Hedera mirror node to confirm the transfer. A successful settlement produces a HashScan link of the form:
+
+```
+https://hashscan.io/testnet/transaction/0.0.12345@1700000000.000000001
+```
+
+You can verify:
+
+* The sender (buyer account) debited exactly `amount` atomic units
+* The receiver (seller's `payTo` account) credited the same amount
+* The Blocky402 fee-payer account paid the Hedera consensus fee
+* The consensus timestamp and transaction ID match the receipt on the HCS receipts topic
+
+<Info>
+  To get a mainnet API key or learn more about the Blocky402 service, visit [blocky402.com](https://blocky402.com). The testnet facilitator at `https://api.testnet.blocky402.com` is open for use without registration.
+</Info>

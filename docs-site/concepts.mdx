@@ -1,0 +1,255 @@
+---
+title: "Core Concepts: How Agora402 Payments and Registry Work"
+description: "Understand the key building blocks of Agora402: HCS registry, x402 payments, quote negotiation, agent identity, pricing models, and on-chain receipts."
+sidebarTitle: "Concepts"
+---
+
+Agora402 combines several Hedera-native primitives — the Consensus Service, Token Service, and mirror node — with the x402 pay-per-request protocol to create a self-describing, self-enforcing marketplace for AI agent services. This page explains each building block in depth so you can reason about trust, pricing, and auditability before you write a single line of code.
+
+<AccordionGroup>
+  <Accordion title="HCS Registry" icon="list-check">
+    The registry is a single HCS topic shared by all sellers. To list a service, the seller submits a signed JSON message of type `listing` to that topic, containing a full `ServiceListing` object — endpoints, pricing models, base URL, quote path, receipt topic, and UAID.
+
+    Buyers read the topic through the **Hedera mirror node** (a public, unauthenticated API). The mirror node returns every message in sequence order, along with the Hedera account that paid for each message submission. This payer account is the trust anchor.
+
+    **Trust model:** a listing is only accepted by the buyer if the HCS message's `payerAccountId` matches the `payTo` field inside the listing itself. Since you must own a Hedera account's private key to pay for an HCS message, this proves the listing was published by the entity that will receive payments — without any registry operator or off-chain authority.
+
+    To delist, the seller submits a message of type `delist` with its UAID. The buyer's registry reader applies delists in sequence and drops any listing that has been removed by its controlling account.
+
+    ```typescript
+    // ServiceListing (published to the registry HCS topic)
+    {
+      uaid: "uaid:aid:3vKq...;uid=agora-seller-1;registry=agora402;...",
+      name: "agora-seller-1",
+      version: "1.0.0",
+      payTo: "0.0.12345",        // must equal the HCS message payer
+      baseUrl: "https://my-seller.example.com",
+      quotePath: "/a2a/quote",
+      facilitator: "https://api.testnet.blocky402.com",
+      endpoints: [...],
+      receiptsTopicId: "0.0.22222",
+      publishedAt: "2025-01-01T00:00:00.000Z"
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Agent Identity (HCS-14 UAID)" icon="fingerprint">
+    Every seller and buyer in Agora402 carries an **HCS-14 Universal Agent Identifier (UAID)** — a globally unique, deterministic string that identifies an agent independently of its deployment details.
+
+    The identifier is derived as:
+
+    ```
+    uaid:aid:<base58(sha384(canonical JSON of six fields))>;<params>
+    ```
+
+    The six fields hashed are: `name`, `nativeId`, `protocol`, `registry`, `skills`, and `version` — sorted alphabetically in the canonical JSON. Endpoints, topics, base URLs, and private keys are deliberately excluded, so the UAID is stable across redeploys, IP changes, and key rotations.
+
+    The parameters appended after the hash provide human-readable context:
+
+    | Parameter  | Example                    | Meaning                    |
+    | ---------- | -------------------------- | -------------------------- |
+    | `uid`      | `agora-seller-1`           | Registry-scoped name       |
+    | `registry` | `agora402`                 | Namespace                  |
+    | `proto`    | `a2a`                      | Agent protocol             |
+    | `nativeId` | `hedera:testnet:0.0.12345` | CAIP-10 account identifier |
+    | `domain`   | `my-seller.example.com`    | Optional A2A domain        |
+
+    **Trust:** quote signatures and HCS message payers are verified against the `payTo` account on the mirror node. Because the UAID includes the `nativeId` (the CAIP-10 Hedera account), a buyer can confirm that the agent signing a quote controls the account that will receive payment — without any PKI or certificate authority.
+  </Accordion>
+
+  <Accordion title="x402 Pay-per-Request" icon="bolt">
+    x402 is an open HTTP payment protocol that uses the `402 Payment Required` status code. Instead of a subscription or a pre-issued API key, every billable request triggers a payment negotiation inline inside the HTTP exchange.
+
+    **The Agora402 flow using the `exact` scheme on Hedera:**
+
+    1. The buyer sends the request (e.g., `POST /v1/infer`).
+    2. The seller's `@x402/express` middleware intercepts and returns a `402` response with a `PAYMENT-REQUIRED` header containing:
+       * `scheme=exact` — the buyer must pay exactly this amount
+       * `network=hedera:testnet` — the CAIP-2 network identifier
+       * `asset=0.0.0` — native HBAR (or an HTS token ID)
+       * `amount` — atomic units (tinybars for HBAR)
+       * `payTo` — the seller's account ID
+       * `extra.feePayer` — Blocky402's fee-payer account
+    3. The `@x402/fetch` client on the buyer runs **spend controls** (asset allowlist, per-call cap) and **session policies** (remaining budget check). If any control rejects the payment option, the request fails immediately without charging the buyer.
+    4. `@x402/hedera` builds a `TransferTransaction`: buyer → seller for `amount`, with Blocky402 as the `transactionFeePayerAccountId`. The buyer signs this transaction with its own key and retries the original request with a `PAYMENT-SIGNATURE` header.
+    5. The seller middleware calls Blocky402 `/verify`, which decodes the transaction, validates the signature and amounts, and reports the payer.
+    6. On a successful handler response (2xx), the middleware calls Blocky402 `/settle`. Blocky402 co-signs as fee payer, submits to Hedera, and returns the finalized transaction ID in the `PAYMENT-RESPONSE` header.
+
+    A 4xx or 5xx from the handler cancels settlement — the buyer is never charged for a failed call.
+  </Accordion>
+
+  <Accordion title="Quote Negotiation" icon="handshake">
+    The quote handshake is a free, pre-payment negotiation step that lets the buyer lock in a price and optionally counter below list.
+
+    **Request — buyer sends `POST /a2a/quote`:**
+
+    ```json
+    {
+      "buyer": "uaid:aid:...",
+      "endpointId": "infer",
+      "estimate": {
+        "inputTokens": 12,
+        "maxOutputTokens": 256
+      },
+      "maxAmount": "54321",
+      "asset": "0.0.0"
+    }
+    ```
+
+    * `endpointId` — which endpoint to price
+    * `estimate` — a work estimate (token counts, units, etc.) used to run the pricing model
+    * `maxAmount` — the buyer's ceiling in atomic units; acts as a counter-offer if below list price
+    * `asset` — `0.0.0` for HBAR or an HTS token ID
+
+    **Response — seller returns a signed `Quote`:**
+
+    ```json
+    {
+      "quoteId": "q_a1b2c3d4e5f6",
+      "seller": "uaid:aid:...",
+      "endpointId": "infer",
+      "network": "hedera:testnet",
+      "asset": "0.0.0",
+      "amount": "54321",
+      "expiresAt": 1700000060,
+      "basis": { "inputTokens": 12, "maxOutputTokens": 256 },
+      "signature": "3046022100...",
+      "signerPublicKey": "302d300706..."
+    }
+    ```
+
+    **If the offer falls below the seller's floor**, the seller responds with `409 Conflict` and returns `minimumAmount` and `listPrice` so the buyer can decide whether to retry at a higher offer or abandon.
+
+    The buyer verifies the ECDSA signature over the canonical quote body and, if `verifyQuoteSigner` is enabled, checks via the mirror node that `signerPublicKey` is the key of the `payTo` account. A quote is single-use: the seller marks it consumed on settlement so it cannot be replayed.
+  </Accordion>
+
+  <Accordion title="Pricing Models" icon="calculator">
+    The `PricingModel` type is a discriminated union of three models. All amounts are **decimal strings of atomic units** (tinybars for HBAR) — no floating-point arithmetic ever touches money. The `priceFor(model, estimate)` function uses only `BigInt` internally and rounds up per 1,000 tokens.
+
+    **Flat** — a fixed price per request, regardless of input size:
+
+    ```json
+    { "kind": "flat", "amount": "500000" }
+    ```
+
+    **Per-token** — a base charge plus per-thousand rates for input and budgeted output tokens:
+
+    ```json
+    {
+      "kind": "per-token",
+      "base": "50000",
+      "inputPer1k": "10000",
+      "outputPer1k": "20000"
+    }
+    ```
+
+    For a request with 12 input tokens and 256 budgeted output tokens:
+    `50000 + ceil(12 × 10000 / 1000) + ceil(256 × 20000 / 1000) = 50000 + 120 + 5120 = 55240 tinybars`
+
+    **Per-unit** — a charge per discrete unit (e.g., one API query, one second of compute):
+
+    ```json
+    { "kind": "per-unit", "unit": "query", "amountPerUnit": "500000" }
+    ```
+
+    The same `priceFor` function runs on **both the buyer and the seller**. The buyer computes the list price locally to rank sellers before quoting; the seller recomputes it when pricing the quote. Because the function is deterministic and BigInt-only, both sides always agree.
+
+    Token estimation uses a simple heuristic: `ceil(text.length / 4)` characters per token — the same function on both sides, so estimates are reproducible without calling the LLM.
+  </Accordion>
+
+  <Accordion title="HCS Receipts and Audit" icon="receipt">
+    After every successful settlement, the seller's `onAfterSettle` hook writes a `Receipt` to a dedicated HCS topic. Receipts include:
+
+    | Field           | Description                                                                    |
+    | --------------- | ------------------------------------------------------------------------------ |
+    | `transactionId` | Hedera transaction ID of the settlement (e.g., `0.0.123@1700000000.123456789`) |
+    | `seller`        | Seller's UAID (`uaid:aid:...`)                                                 |
+    | `network`       | CAIP-2 network identifier (e.g., `hedera:testnet`)                             |
+    | `payer`         | Buyer's account ID                                                             |
+    | `payTo`         | Seller's account ID                                                            |
+    | `asset`         | `0.0.0` for HBAR or an HTS token ID                                            |
+    | `amount`        | Atomic units paid                                                              |
+    | `resource`      | Endpoint path (e.g., `/v1/infer`)                                              |
+    | `quoteId`       | Quote used, if any                                                             |
+    | `usage`         | Metering evidence (e.g., `{inputTokens: 12, outputTokens: 38}`)                |
+    | `responseHash`  | SHA-256 hex of the response body — lets the buyer prove what was delivered     |
+    | `issuedAt`      | ISO timestamp when the receipt was written to HCS                              |
+
+    **Auditing with `agora receipts`:**
+
+    ```bash
+    npm run buyer -- receipts \
+      --topic 0.0.22222 \
+      --seller-account 0.0.12345
+    ```
+
+    The `ReceiptLedger.audit()` method fetches every receipt from the HCS topic, then fetches the corresponding settlement transaction from the mirror node. For each receipt it checks:
+
+    * The on-chain transfer matches `payer`, `payTo`, `asset`, and `amount`.
+    * The receipt was written by the expected seller account.
+    * The transaction result is `SUCCESS`.
+
+    Any discrepancy is printed with a `FAIL` flag. Honest sellers pass every check; a seller that inflates amounts or misattributes payers will be caught automatically.
+  </Accordion>
+
+  <Accordion title="Budget Controls" icon="shield-halved">
+    The `BuyerAgent` enforces two independent spending limits configured at construction time.
+
+    **Per-call cap (`maxPerCall`)** — the maximum amount the buyer will pay for a single request, in atomic units of the preferred asset. This is enforced by the `@x402/fetch` spend controls before the transaction is even signed. If the 402 asks for more than `maxPerCall`, the request fails immediately — no signature is produced and no funds leave the buyer's account.
+
+    **Session budget (`sessionBudget`)** — the total the agent may spend across all calls in the current process lifetime. A registered policy on the x402 client computes `remaining = sessionBudget − totalSpent` before each payment. If no accepted payment option is affordable within the remaining budget, the request fails with a clear error message rather than silently overspending.
+
+    Both limits are denominated in the same atomic units as the pricing models. Use the `parseAmount(human, decimals)` helper to convert human-readable HBAR strings (e.g., `"0.05"`) to tinybars (e.g., `5000000n`) when configuring the agent.
+
+    ```typescript
+    const agent = new BuyerAgent({
+      // ...
+      maxPerCall: parseAmount("0.05", 8),    // 5,000,000 tinybars
+      sessionBudget: parseAmount("0.5", 8),  // 50,000,000 tinybars
+    });
+    ```
+
+    You can also pass `--max-call` and `--budget` (in HBAR) to the `agora` CLI:
+
+    ```bash
+    npm run buyer -- infer "Hello" --max-call 0.01 --budget 0.1
+    ```
+  </Accordion>
+
+  <Accordion title="Assets: HBAR and TOLL Token" icon="coins">
+    Agora402 supports two settlement assets.
+
+    **Native HBAR** — the default. Asset ID is `0.0.0` (a sentinel that maps to the native HBAR transfer in a Hedera `TransferTransaction`). HBAR has 8 decimal places; 1 HBAR = 100,000,000 tinybars. No token association is required.
+
+    **TOLL HTS Token** — an optional HTS token created by `npm run setup:token`. The TOLL token carries a **custom fixed fee** in its transfer path, so every token transfer automatically routes a portion to a fee-collection account. This is useful for platform monetisation or liquidity incentives. The buyer must associate their account with the token before they can receive it (the setup script does this automatically).
+
+    Settlement asset in the `ServiceListing`:
+
+    ```json
+    {
+      "network": "hedera:testnet",
+      "asset": "0.0.0",
+      "symbol": "HBAR",
+      "decimals": 8,
+      "pricing": { "kind": "per-token", "base": "50000", ... }
+    }
+    ```
+
+    Replace `"asset": "0.0.0"` with your TOLL token ID (e.g., `"0.0.33333"`) and update `symbol` and `decimals` to match. The buyer selects options matching its configured `asset` preference, so a listing can offer both HBAR and TOLL options for the same endpoint — the buyer automatically picks the one it can pay with.
+  </Accordion>
+</AccordionGroup>
+
+## Glossary
+
+| Term            | Definition                                                                                                                                                                                   |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **UAID**        | Universal Agent Identifier (HCS-14). A deterministic `uaid:aid:<base58(sha384(...))>` string identifying an agent by name, version, protocol, and Hedera account.                            |
+| **HCS**         | Hedera Consensus Service. An append-only public log where messages are ordered and timestamped by Hedera network consensus. Used for the registry and receipt topics.                        |
+| **HTS**         | Hedera Token Service. Hedera's native token layer. Used for the optional TOLL settlement token with custom fixed fees.                                                                       |
+| **HBAR**        | The native cryptocurrency of the Hedera network. 1 HBAR = 100,000,000 tinybars. Default settlement asset in Agora402 (asset ID `0.0.0`).                                                     |
+| **x402**        | An open HTTP payment protocol using the `402 Payment Required` status code for per-request micropayments. Agora402 uses the `exact` scheme for Hedera.                                       |
+| **Blocky402**   | A hosted Hedera x402 facilitator that verifies partially signed `TransferTransaction`s, co-signs as fee payer, and submits them to consensus. Testnet: `https://api.testnet.blocky402.com`.  |
+| **Quote**       | A signed, time-limited price offer from a seller, produced by `POST /a2a/quote`. Contains a `quoteId`, amount, expiry, and an ECDSA signature by the seller's account key. Single-use.       |
+| **Receipt**     | A JSON record written to the receipts HCS topic after every settlement, containing the transaction ID, payer, payTo, amount, resource, usage, and response hash.                             |
+| **Mirror Node** | A read-only Hedera API that indexes all transactions, HCS messages, and token transfers. Used for registry reads, receipt audits, quote signer verification, and the HBAR/USD exchange rate. |
+| **CAIP-2**      | Chain Agnostic Improvement Proposal 2. A standard for chain namespace identifiers. Agora402 uses `hedera:testnet` and `hedera:mainnet`.                                                      |
