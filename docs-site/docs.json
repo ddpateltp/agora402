@@ -166,7 +166,8 @@
   },
   "navbar": {
     "primary": {
-      "type": "github",
+      "type": "button",
+      "label": "GitHub",
       "href": "https://github.com/ddpateltp/agora402"
     }
   },
