@@ -178,6 +178,7 @@
   },
   "contextual": {
     "options": [
+      "assistant",
       "copy",
       "view",
       "claude",
@@ -201,5 +202,8 @@
       "source": "/api/rates",
       "destination": "/api/endpoints/hbar-rate"
     }
-  ]
+  ],
+  "search": {
+    "prompt": "Search or ask the assistant"
+  }
 }
