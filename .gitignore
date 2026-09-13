@@ -18,8 +18,5 @@ dist/
 .agora/
 coverage/
 
-# local reference material and internal working notes, never committed
-external/
-tasks/
-.claude/
-docs/INTEGRATION_PLAN.md
+# local working material, never committed
+internal/
