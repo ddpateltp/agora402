@@ -14,6 +14,10 @@ import { loadBuyerConfig } from './config.js';
 
 const cfg = loadBuyerConfig();
 const here = dirname(fileURLToPath(import.meta.url));
+// Public deployments: the caller's budget is clamped to server-side caps so a request body cannot raise the spend.
+const MAX_SESSION = parseAmount(process.env.BUYER_MAX_SESSION_HBAR || '0.5', 8);
+const MAX_CALL = parseAmount(process.env.BUYER_MAX_CALL_HBAR || '0.05', 8);
+const clamp = (v: bigint, cap: bigint) => (v > cap ? cap : v);
 // The site is packages/web, built by `npm run build` into packages/web/dist and served from here.
 const webDist = resolve(here, '../../web/dist');
 const registry = cfg.REGISTRY_TOPIC_ID ? new Registry({ network: cfg.HEDERA_NETWORK, topicId: cfg.REGISTRY_TOPIC_ID }) : undefined;
@@ -32,8 +36,8 @@ function getAgent(budgetHbar: string, maxCallHbar: string): BuyerAgent {
       accountId: cfg.BUYER_ACCOUNT_ID,
       privateKey: cfg.BUYER_PRIVATE_KEY,
       name: cfg.BUYER_NAME,
-      maxPerCall: parseAmount(maxCallHbar || '0.05', 8),
-      sessionBudget: parseAmount(budgetHbar || '0.5', 8),
+      maxPerCall: clamp(parseAmount(maxCallHbar || '0.05', 8), MAX_CALL),
+      sessionBudget: clamp(parseAmount(budgetHbar || '0.5', 8), MAX_SESSION),
       registry,
       trust,
       reputation,
@@ -46,6 +50,7 @@ function getAgent(budgetHbar: string, maxCallHbar: string): BuyerAgent {
 const hbar = (v: bigint | string | number) => formatAmount(BigInt(v), 8, 'HBAR');
 
 const app = express();
+app.set('trust proxy', true);
 app.use(express.json());
 const webIndex = resolve(webDist, 'index.html');
 if (existsSync(webIndex)) app.use(express.static(webDist, { index: false }));
@@ -55,9 +60,15 @@ const sendIndex = (_req: Request, res: Response) => {
 };
 app.get(['/', '/market', '/buy', '/audit', '/trail', '/demo'], sendIndex);
 
+app.get('/health', (_req, res) => {
+  res.json({ ok: true, service: 'buyer-dashboard', network: cfg.HEDERA_NETWORK });
+});
+
 app.get('/api/config', (_req, res) => {
   res.json({
     network: cfg.HEDERA_NETWORK,
+    maxSessionHbar: MAX_SESSION.toString(),
+    maxCallHbar: MAX_CALL.toString(),
     buyer: cfg.BUYER_ACCOUNT_ID,
     buyerUrl: hashscanAccount(cfg.HEDERA_NETWORK, cfg.BUYER_ACCOUNT_ID),
     buyerUaid: agent?.uaid ?? null,
