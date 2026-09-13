@@ -2,6 +2,7 @@ export * from './types.js';
 export * from './identity.js';
 export * from './pricing.js';
 export * from './quote.js';
+export * from './trust.js';
 
 /** HashScan explorer links. */
 export function hashscanTx(network: 'testnet' | 'mainnet', transactionId: string): string {
@@ -20,3 +21,4 @@ export function mirrorNodeUrl(network: 'testnet' | 'mainnet'): string {
 export function shortNetwork(caip2: string): 'testnet' | 'mainnet' {
   return caip2.endsWith('mainnet') ? 'mainnet' : 'testnet';
 }
+export * from './llm.js';

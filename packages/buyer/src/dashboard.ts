@@ -4,19 +4,23 @@
  * over a plain fetch response. Same agent code and budgets as the CLI.
  */
 import express, { type Request, type Response } from 'express';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Registry, ReceiptLedger } from '@agora402/registry';
-import { formatAmount, hashscanAccount, hashscanTopic, parseAmount } from '@agora402/shared';
+import { Marketplace, Registry, ReceiptLedger, ReputationLedger, TrustLedger } from '@agora402/registry';
+import { formatAmount, hashscanAccount, hashscanTopic, newAuditId, parseAmount } from '@agora402/shared';
 import { BuyerAgent, type AgentEvent } from './agent.js';
 import { loadBuyerConfig } from './config.js';
 
 const cfg = loadBuyerConfig();
 const here = dirname(fileURLToPath(import.meta.url));
-const htmlPath = resolve(here, '../public/index.html');
+// The site is packages/web, built by `npm run build` into packages/web/dist and served from here.
+const webDist = resolve(here, '../../web/dist');
 const registry = cfg.REGISTRY_TOPIC_ID ? new Registry({ network: cfg.HEDERA_NETWORK, topicId: cfg.REGISTRY_TOPIC_ID }) : undefined;
-const receiptsTopic = process.env.RECEIPTS_TOPIC_ID || undefined;
+const receiptsTopic = cfg.RECEIPTS_TOPIC_ID || undefined;
+const trust = cfg.AUDIT_TOPIC_ID ? new TrustLedger({ network: cfg.HEDERA_NETWORK, topicId: cfg.AUDIT_TOPIC_ID }) : undefined;
+const reputation = cfg.REPUTATION_TOPIC_ID ? new ReputationLedger({ network: cfg.HEDERA_NETWORK, topicId: cfg.REPUTATION_TOPIC_ID }) : undefined;
+const marketplace = registry ? new Marketplace({ registry, trust, reputation }) : undefined;
 
 // One agent per dashboard process so the session budget is visible across calls.
 let agent: BuyerAgent | null = null;
@@ -31,6 +35,8 @@ function getAgent(budgetHbar: string, maxCallHbar: string): BuyerAgent {
       maxPerCall: parseAmount(maxCallHbar || '0.05', 8),
       sessionBudget: parseAmount(budgetHbar || '0.5', 8),
       registry,
+      trust,
+      reputation,
       verifyQuoteSigner: true,
       onEvent: (e) => listeners.forEach((l) => l(e)),
     });
@@ -41,7 +47,13 @@ const hbar = (v: bigint | string | number) => formatAmount(BigInt(v), 8, 'HBAR')
 
 const app = express();
 app.use(express.json());
-app.get('/', (_req, res) => res.type('html').send(readFileSync(htmlPath, 'utf8')));
+const webIndex = resolve(webDist, 'index.html');
+if (existsSync(webIndex)) app.use(express.static(webDist, { index: false }));
+const sendIndex = (_req: Request, res: Response) => {
+  if (existsSync(webIndex)) res.type('html').send(readFileSync(webIndex, 'utf8'));
+  else res.type('text').status(503).send('The site is not built. Run `npm run build` (or `npm run web` for the Vite dev server on http://localhost:4405).');
+};
+app.get(['/', '/buy', '/audit', '/trail', '/demo'], sendIndex);
 
 app.get('/api/config', (_req, res) => {
   res.json({
@@ -53,17 +65,28 @@ app.get('/api/config', (_req, res) => {
     registryUrl: cfg.REGISTRY_TOPIC_ID ? hashscanTopic(cfg.HEDERA_NETWORK, cfg.REGISTRY_TOPIC_ID) : null,
     receiptsTopic: receiptsTopic ?? null,
     receiptsUrl: receiptsTopic ? hashscanTopic(cfg.HEDERA_NETWORK, receiptsTopic) : null,
+    auditTopic: cfg.AUDIT_TOPIC_ID || null,
+    auditUrl: cfg.AUDIT_TOPIC_ID ? hashscanTopic(cfg.HEDERA_NETWORK, cfg.AUDIT_TOPIC_ID) : null,
+    reputationTopic: cfg.REPUTATION_TOPIC_ID || null,
+    reputationUrl: cfg.REPUTATION_TOPIC_ID ? hashscanTopic(cfg.HEDERA_NETWORK, cfg.REPUTATION_TOPIC_ID) : null,
+    minTrust: agent?.minTrust ?? null,
     sellerUrl: cfg.SELLER_PUBLIC_URL ?? null,
     spent: agent ? agent.totalSpent.toString() : '0',
     remaining: agent ? agent.remaining.toString() : null,
   });
 });
 
+/** Drop the session agent so spend starts from zero (used by the demo page's reset). */
+app.post('/api/reset', (_req, res) => {
+  agent = null;
+  res.json({ ok: true });
+});
+
 app.get('/api/sellers', async (req, res) => {
   try {
     const sellerUrl = typeof req.query.seller === 'string' && req.query.seller ? req.query.seller : cfg.SELLER_PUBLIC_URL;
     const a = getAgent(String(req.query.budget ?? ''), String(req.query.maxCall ?? ''));
-    const listings = registry ? await registry.listServices() : sellerUrl ? [await a.listingFrom(sellerUrl)] : [];
+    const listings = marketplace ? await marketplace.list() : sellerUrl ? [{ ...(await a.listingFrom(sellerUrl)), trust: null, reputation: null }] : [];
     // Health of each seller, best effort, so the UI can show facilitator and model.
     const health = await Promise.all(
       listings.map(async (l) => {
@@ -93,6 +116,7 @@ app.post('/api/run', async (req: Request, res: Response) => {
   const body = (req.body ?? {}) as Record<string, string | undefined>;
   try {
     const a = getAgent(body.budget ?? '', body.maxCall ?? '');
+    a.minTrust = body.minTrust !== undefined && body.minTrust !== '' ? Number(body.minTrust) : undefined;
     const sellerUrl = body.seller ? body.seller : registry ? undefined : cfg.SELLER_PUBLIC_URL;
     const counter = body.counter ? Math.round(Number(body.counter) * 100) : undefined;
     const started = Date.now();
@@ -127,6 +151,7 @@ app.post('/api/run', async (req: Request, res: Response) => {
       transaction: r.settlement?.transaction ?? null,
       hashscanUrl: r.hashscanUrl,
       onChain: r.onChain ? { result: r.onChain.result, consensus: r.onChain.consensus_timestamp, fee: r.onChain.charged_tx_fee, transfers: r.onChain.transfers } : null,
+      trust: r.offer.trust,
       spent: a.totalSpent.toString(),
       remaining: a.remaining.toString(),
       elapsedMs: Date.now() - started,
@@ -136,6 +161,128 @@ app.post('/api/run', async (req: Request, res: Response) => {
   } finally {
     listeners.delete(listener);
     res.end();
+  }
+});
+
+/**
+ * Buy an audit of a seller from an auditor agent. Streams NDJSON: the buyer's
+ * payment stages ({type:'stage'}), the auditor's own progress relayed from its
+ * free events endpoint ({type:'audit'}), then {type:'result'} or {type:'error'}.
+ */
+app.post('/api/audit', async (req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+  const send = (obj: Record<string, unknown>) => res.write(JSON.stringify(obj) + '\n');
+  const body = (req.body ?? {}) as { subject?: string; sellerUrl?: string; auditor?: string; budget?: string; maxCall?: string };
+  const auditId = newAuditId();
+  let progress: Promise<void> | null = null;
+  const listener = (e: AgentEvent) => {
+    send({ type: 'stage', ...e });
+    if (e.stage === 'requesting' && e.data?.endpointId === 'audit' && typeof e.data.baseUrl === 'string' && !progress) progress = relayAuditorEvents(e.data.baseUrl, auditId, send);
+  };
+  listeners.add(listener);
+  try {
+    const a = getAgent(body.budget ?? '', body.maxCall ?? '');
+    if (!body.subject && !body.sellerUrl) throw new Error('subject (uaid) or sellerUrl required');
+    const started = Date.now();
+    const r = await a.audit({ uaid: body.subject, sellerUrl: body.sellerUrl }, { auditorUrl: body.auditor, auditId });
+    if (progress) await progress;
+    send({
+      type: 'result',
+      ok: r.status < 400,
+      status: r.status,
+      auditId,
+      auditor: { name: r.offer.listing.name, uaid: r.offer.listing.uaid, payTo: r.offer.listing.payTo, baseUrl: r.offer.listing.baseUrl },
+      paid: r.amount !== null ? r.amount.toString() : null,
+      asset: r.asset ?? r.offer.option.asset,
+      symbol: r.offer.option.symbol,
+      decimals: r.offer.option.decimals,
+      transaction: r.settlement?.transaction ?? null,
+      hashscanUrl: r.hashscanUrl,
+      audit: r.status < 400 ? r.body : null,
+      error: r.status >= 400 ? r.body : null,
+      spent: a.totalSpent.toString(),
+      remaining: a.remaining.toString(),
+      elapsedMs: Date.now() - started,
+    });
+  } catch (err) {
+    send({ type: 'error', message: err instanceof Error ? err.message : String(err), spent: agent?.totalSpent.toString() ?? '0', remaining: agent?.remaining.toString() ?? null });
+  } finally {
+    listeners.delete(listener);
+    res.end();
+  }
+});
+
+/** Follow the auditor's free progress stream and forward each line to the dashboard client. */
+async function relayAuditorEvents(auditorBaseUrl: string, auditId: string, send: (obj: Record<string, unknown>) => void): Promise<void> {
+  try {
+    const res = await fetch(`${auditorBaseUrl.replace(/\/$/, '')}/v1/audits/${auditId}/events`, { signal: AbortSignal.timeout(10 * 60 * 1000) });
+    if (!res.ok || !res.body) return;
+    const decoder = new TextDecoder();
+    let buffer = '';
+    for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+      buffer += decoder.decode(chunk, { stream: true });
+      let nl: number;
+      while ((nl = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, nl).trim();
+        buffer = buffer.slice(nl + 1);
+        if (!line) continue;
+        try {
+          send({ type: 'audit', ...(JSON.parse(line) as Record<string, unknown>) });
+        } catch {
+          /* skip malformed line */
+        }
+      }
+    }
+  } catch (err) {
+    send({ type: 'audit', event: 'relay_error', message: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+/** Attestations on the audit topic, or the full trail of one audit (?auditId=). */
+app.get('/api/audits', async (req, res) => {
+  if (!trust) {
+    res.json({ topic: null, attestations: [], trail: [] });
+    return;
+  }
+  try {
+    const auditId = typeof req.query.auditId === 'string' ? req.query.auditId : undefined;
+    if (auditId) {
+      res.json({ topic: trust.topicId, topicUrl: hashscanTopic(cfg.HEDERA_NETWORK, trust.topicId), trail: await trust.trail(auditId) });
+      return;
+    }
+    const all = await trust.list();
+    const attestations = [...(await trust.attestations()).values()].sort((a, b) => (a.consensusTimestamp < b.consensusTimestamp ? 1 : -1));
+    res.json({ topic: trust.topicId, topicUrl: hashscanTopic(cfg.HEDERA_NETWORK, trust.topicId), attestations, messages: all.length });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+/** Rate a seller after paying it. Body: {subject, subjectAccount, transactionId, score, comment?}. */
+app.post('/api/rate', async (req, res) => {
+  const body = (req.body ?? {}) as { subject?: string; subjectAccount?: string; transactionId?: string; score?: number | string; comment?: string };
+  try {
+    const a = getAgent('', '');
+    const r = await a.rate({ subject: String(body.subject ?? ''), subjectAccount: String(body.subjectAccount ?? ''), transactionId: String(body.transactionId ?? ''), score: Number(body.score), comment: body.comment });
+    res.json({ ...r, topicId: reputation?.topicId ?? null, topicUrl: reputation ? hashscanTopic(cfg.HEDERA_NETWORK, reputation.topicId) : null });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+/** Verified reputation per seller uaid. */
+app.get('/api/reputation', async (_req, res) => {
+  if (!reputation) {
+    res.json({ topic: null, sellers: {} });
+    return;
+  }
+  try {
+    res.json({ topic: reputation.topicId, topicUrl: hashscanTopic(cfg.HEDERA_NETWORK, reputation.topicId), sellers: Object.fromEntries(await reputation.summaries()) });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
   }
 });
 

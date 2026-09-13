@@ -5,3 +5,4 @@ export * from './quotes.js';
 export * from './receipts.js';
 export * from './server.js';
 export * from './x402.js';
+export * from './auditor.js';

@@ -2,43 +2,47 @@
 
 ETHGlobal rules: 2 to 4 minutes, 720p or better, your own voice, no music-only, no AI voiceover, not recorded on a phone, no speed-up. Show the paid request executing.
 
+The video follows `/demo` step by step. Every step prefills its own inputs and shows the sentence to say under the card. Press Next (or the right arrow key) to advance.
+
 ## Before recording
 
-* Seller running with `LLM_PROVIDER=anthropic` (or groq), `RECEIPTS_TOPIC_ID` set, listing registered.
-* Buyer dashboard running on http://localhost:4403 with the registry topic configured.
-* HashScan open in a second tab on the receipts topic.
-* Terminal ready with `npm run buyer -- receipts --topic <RECEIPTS_TOPIC_ID> --seller-account <SELLER_ACCOUNT_ID>` typed but not run.
-* Reset the dashboard so the session shows 0 HBAR spent.
+* `npm run dev` running: seller (4402), auditor (4404), dashboard API (4403), site (4405). Both listings registered, `LLM_PROVIDER=groq` or `anthropic`.
+* `AUDIT_TOPIC_ID` and `REPUTATION_TOPIC_ID` set, and one audit already on the topic (run `npm run buyer -- audit agora-seller-1` once) so the replay switch has something to play if the model is slow.
+* Open http://localhost:4405/demo at 1440 by 900. Click "Reset the take" so spent reads 0.
+* HashScan open in a second tab on the audit topic and the receipts topic.
 
-## 0:00 to 0:20  Problem (one slide, 3 bullets)
+## 0:00 to 0:20  Step 0, the problem
 
-"Agents that buy inference or data from other agents have no way to find a service, agree a price and pay without an API key and a human. Agora402 is a marketplace where agents do all three on Hedera, per request, over x402."
+Read the four bullets. "Agora402: discover, verify, negotiate, pay, prove. On Hedera, per request."
 
-## 0:20 to 0:50  Discovery
+## 0:20 to 0:40  Step 1, discover
 
-Dashboard, Sellers panel. Point at the registry topic link, open it on HashScan: the listing is an HCS message paid by the seller account. Show the manifest and the pricing model (base plus per 1k input plus per 1k output tokens). Mention the HCS-14 identifier.
+Point at the three cards: the services seller, the auditor, any third party. Each is an HCS message paid for by the account it names. Open the registry topic on HashScan for two seconds.
 
-## 0:50 to 1:50  The paid request
+## 0:40 to 1:20  Step 2, verify
 
-Type a prompt, set "offer 90% of list price", click Discover, negotiate, pay. Narrate the stages as they stream:
+Click "Pay the auditor and run the audit". Narrate the left rail (the buyer pays the auditor 0.01 HBAR over x402) then the right rail as the four stages land: manifest, payment integrity, description review, verdict. The attestation card appears: safe, trust 100, written to the audit topic by the auditor account. If the model is slow, tick the replay switch and play the last audit back from the mirror node instead.
 
-* discovering, discovered: read from the mirror node
-* quoting, quoted: seller signed a quote, accepted our counter, 120 s TTL
-* requesting, payment_required: the 402 carries exactly the quoted amount in tinybars
-* paying, paid: buyer signs a Hedera TransferTransaction, facilitator is fee payer
-* settled: Blocky402 verified and settled, transaction id
-* verifying, verified: mirror node shows the seller credited
+## 1:20 to 1:50  Step 3, negotiate and pay
 
-Click the HashScan link. Show the transfer: buyer debited, seller credited, Blocky402 paid the network fee.
+Click "Discover, negotiate, pay". Narrate: verified seller ranked first, signed quote at 90 percent of list, a 402 for exactly that amount, one transfer signed by the buyer, Blocky402 settles and pays the fee, mirror node confirms. The answer appears.
 
-## 1:50 to 2:30  Metering and receipts
+## 1:50 to 2:10  Step 4, prove the payment
 
-Run a second request with a much longer prompt and no counter. The 402 amount is higher. Point at the token usage in the receipt. Scroll to the receipts table: match / MISMATCH column. Switch to the terminal and run the audit command: every receipt recomputed against the mirror node.
+The settlement ledger: buyer debited, seller credited, facilitator paid the network fee. List price, signed quote and the 402 amount side by side.
 
-## 2:30 to 2:55  What Hedera gave us (one slide, 4 bullets)
+## 2:10 to 2:35  Step 5, metering
 
-HCS registry and receipts, HTS TOLL token with custom fee in the settlement path, ECDSA keys signing quotes, mirror node as the free public verifier. Blocky402 for gasless settlement.
+Click "Pay for the longer request". The 402 is higher because the price is computed from the request. Compare the two amounts and the token counts.
 
-## 2:55 to 3:10  Close
+## 2:35 to 3:05  Step 6, receipts and rating
 
-Repo link, tests run the real x402 client and server paths offline, next steps: scheduled transactions for retainers, ERC-8004 registration, more sellers.
+Receipts table: every settlement with the chain match column. Click five stars and "Record the rating". The rating cites the settlement from step 3; the seller's card updates with the rating.
+
+## 3:05 to 3:25  Step 7, what Hedera gave us
+
+Read the four bullets.
+
+## 3:25 to 3:40  Step 8, close
+
+Repo, tests offline, roadmap.

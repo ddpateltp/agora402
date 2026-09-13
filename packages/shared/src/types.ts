@@ -151,3 +151,113 @@ export const RegistryMessage = z.discriminatedUnion('type', [
   z.object({ v: z.literal(1), type: z.literal('delist'), uaid: z.string(), reason: z.string().optional() }),
 ]);
 export type RegistryMessage = z.infer<typeof RegistryMessage>;
+
+// ---- trust layer: audits, attestations, ratings -----------------------------
+
+/** Outcome of an audit. */
+export const Verdict = z.enum(['safe', 'dangerous']);
+export type Verdict = z.infer<typeof Verdict>;
+
+export const Severity = z.enum(['none', 'low', 'medium', 'high', 'critical']);
+export type Severity = z.infer<typeof Severity>;
+
+/** One observation made by an audit stage. */
+export const AuditFinding = z.object({
+  severity: Severity,
+  title: z.string().min(1),
+  detail: z.string().default(''),
+});
+export type AuditFinding = z.infer<typeof AuditFinding>;
+
+/** Identity of an audit run. `subject` is the audited seller's uaid. */
+const AuditRef = {
+  auditId: z.string().min(8),
+  subject: z.string().startsWith('uaid:'),
+  /** sha256 of the audited listing content, see listingContentHash() */
+  contentHash: z.string().regex(/^[0-9a-f]{64}$/),
+  /** the auditor agent */
+  auditor: z.string().startsWith('uaid:'),
+  /** account that pays for the audit topic messages; must equal the HCS payer */
+  auditorAccount: HederaEntityId,
+};
+
+/** Written to the audit topic when an audit begins. */
+export const AuditStarted = z.object({
+  v: z.literal(1),
+  type: z.literal('audit_started'),
+  ...AuditRef,
+  /** what is being inspected, for the replay view */
+  target: z.object({ name: z.string(), baseUrl: z.string().url(), endpoints: z.array(z.string()) }),
+  stages: z.array(z.string()).min(1),
+  startedAt: z.string(),
+});
+export type AuditStarted = z.infer<typeof AuditStarted>;
+
+/** Written to the audit topic once per completed stage. */
+export const AuditStage = z.object({
+  v: z.literal(1),
+  type: z.literal('audit_stage'),
+  ...AuditRef,
+  stage: z.string().min(1),
+  /** 1-based position and total, so a replay can show progress */
+  index: z.number().int().min(1),
+  total: z.number().int().min(1),
+  summary: z.string(),
+  findings: z.array(AuditFinding).default([]),
+  /** LLM that produced the stage, or "deterministic" */
+  model: z.string(),
+  completedAt: z.string(),
+});
+export type AuditStage = z.infer<typeof AuditStage>;
+
+/**
+ * The verdict. Written last to the audit topic by the auditor account.
+ * A buyer accepts it only when the HCS payer equals `auditorAccount`, the
+ * subject matches the listing and `contentHash` matches the listing it holds.
+ */
+export const Attestation = z.object({
+  v: z.literal(1),
+  type: z.literal('attestation'),
+  ...AuditRef,
+  verdict: Verdict,
+  /** 0 (do not use) to 100 (nothing found), derived from findings, see trustScoreFrom() */
+  trustScore: z.number().int().min(0).max(100),
+  /** highest severity across all stages */
+  risk: Severity,
+  summary: z.string(),
+  /** what the service actually does, as observed */
+  capabilities: z.array(z.string()).default([]),
+  findings: z.array(AuditFinding).default([]),
+  model: z.string(),
+  issuedAt: z.string(),
+});
+export type Attestation = z.infer<typeof Attestation>;
+
+/** Envelope for every message on the audit topic. */
+export const AuditMessage = z.discriminatedUnion('type', [AuditStarted, AuditStage, Attestation]);
+export type AuditMessage = z.infer<typeof AuditMessage>;
+
+/**
+ * A buyer's rating of a seller, written to the reputation topic. Proof of use
+ * is the settlement transaction: readers only count a rating when the HCS
+ * payer equals `raterAccount` and that account was debited in `transactionId`
+ * in favour of the rated seller.
+ */
+export const Rating = z.object({
+  v: z.literal(1),
+  type: z.literal('rating'),
+  subject: z.string().startsWith('uaid:'),
+  /** seller account credited by the payment, so the check needs no registry read */
+  subjectAccount: HederaEntityId,
+  rater: z.string().startsWith('uaid:'),
+  raterAccount: HederaEntityId,
+  /** settlement the rater paid, SDK format 0.0.x@sec.nanos */
+  transactionId: z.string().min(1),
+  score: z.number().int().min(1).max(5),
+  comment: z.string().max(280).optional(),
+  issuedAt: z.string(),
+});
+export type Rating = z.infer<typeof Rating>;
+
+export const ReputationMessage = z.discriminatedUnion('type', [Rating]);
+export type ReputationMessage = z.infer<typeof ReputationMessage>;

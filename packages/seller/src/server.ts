@@ -4,6 +4,7 @@ import type { x402ResourceServer, SettleResultContext, HTTPTransportContext } fr
 import { getExchangeRate, parsePrivateKey } from '@agora402/registry';
 import { QuoteRequest, Receipt, mirrorNodeUrl, sha256Hex, shortNetwork, type Quote, type ServiceListing } from '@agora402/shared';
 import type { SellerConfig } from './config.js';
+import { Auditor, type AuditorDeps } from './auditor.js';
 import { buildIdentity, buildListing } from './catalogue.js';
 import { createLlmProvider, type LlmProvider } from './llm.js';
 import { QuoteBook } from './quotes.js';
@@ -21,6 +22,8 @@ export interface SellerAppOptions {
   fetchImpl?: typeof fetch;
   /** skip the facilitator /supported sync at startup (tests) */
   syncFacilitatorOnStart?: boolean;
+  /** auditor role wiring: registry for subject lookup, ledger + client to write the audit topic */
+  auditor?: Pick<AuditorDeps, 'registry' | 'ledger' | 'client'>;
   log?: (msg: string) => void;
 }
 
@@ -29,6 +32,7 @@ export interface SellerApp {
   listing: ServiceListing;
   quotes: QuoteBook;
   receipts: ReceiptWriter;
+  auditor: Auditor | null;
 }
 
 export function createSellerApp(opts: SellerAppOptions): SellerApp {
@@ -48,6 +52,10 @@ export function createSellerApp(opts: SellerAppOptions): SellerApp {
       endpoints: listing.endpoints,
     });
   const pricing: PricingContext = { payTo: cfg.SELLER_ACCOUNT_ID, quotes };
+  const auditor =
+    cfg.SELLER_ROLE === 'services'
+      ? null
+      : new Auditor({ network: cfg.HEDERA_NETWORK, auditor: { uaid, accountId: cfg.SELLER_ACCOUNT_ID }, llm, fetchImpl, log, ...(opts.auditor ?? {}) });
 
   // Receipt on every settled payment. The hook sees the request, the settled
   // transaction and the buffered response, so the receipt can carry the
@@ -100,8 +108,10 @@ export function createSellerApp(opts: SellerAppOptions): SellerApp {
     res.json(agentCard(listing, cfg));
   });
   app.get('/health', (_req, res) => {
-    res.json({ status: 'ok', uaid, network: cfg.caip2, facilitator: cfg.FACILITATOR_URL, llm: llm.name, receiptsToHcs: receipts.enabled });
+    res.json({ status: 'ok', uaid, network: cfg.caip2, facilitator: cfg.FACILITATOR_URL, llm: llm.name, receiptsToHcs: receipts.enabled, role: cfg.SELLER_ROLE, auditsToHcs: auditor?.recordsToHcs ?? false });
   });
+  // Free: progress of one audit, so a buyer can watch the stages while its paid request is open.
+  if (auditor) app.get('/v1/audits/:auditId/events', (req, res) => auditor.handleEvents(req, res));
   app.get('/receipts', (req, res) => {
     const limit = Math.min(200, Number(req.query.limit ?? 50) || 50);
     res.json({ receipts: receipts.list(limit) });
@@ -157,6 +167,8 @@ export function createSellerApp(opts: SellerAppOptions): SellerApp {
     }
   });
 
+  if (auditor) app.post('/v1/audit', (req, res) => auditor.handleAudit(req, res));
+
   app.get('/v1/rates/hbar', async (_req, res) => {
     try {
       const rate = await getExchangeRate(mirrorNodeUrl(shortNetwork(cfg.caip2)), fetchImpl);
@@ -176,14 +188,14 @@ export function createSellerApp(opts: SellerAppOptions): SellerApp {
     }
   });
 
-  return { app, listing, quotes, receipts };
+  return { app, listing, quotes, receipts, auditor };
 }
 
 /** A2A agent card with the x402 payment extension, so generic A2A tooling can find us. */
 export function agentCard(listing: ServiceListing, cfg: SellerConfig) {
   return {
     name: listing.name,
-    description: 'Agora402 seller: pay-per-request AI and data services on Hedera over x402.',
+    description: cfg.SELLER_ROLE === 'auditor' ? 'Agora402 auditor: paid audits of other sellers, attested on Hedera.' : 'Agora402 seller: pay-per-request AI and data services on Hedera over x402.',
     url: listing.baseUrl,
     version: listing.version,
     provider: { organization: 'Agora402', url: 'https://github.com/ddpateltp/agora402' },

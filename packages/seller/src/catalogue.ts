@@ -15,16 +15,17 @@ export const HBAR_OPTION = (network: SellerConfig['caip2']): PaymentOptionSpec =
 
 export const TOLL_DECIMALS = 6;
 
-/** Skills follow the HCS-14 / OASF numbering loosely: 0 text generation, 20 data retrieval. */
+/** Skills follow the HCS-14 / OASF numbering loosely: 0 text generation, 20 data retrieval, 40 assessment. */
 export const SKILL_TEXT_GENERATION = 0;
 export const SKILL_DATA_RETRIEVAL = 20;
+export const SKILL_ASSESSMENT = 40;
 
 export function buildEndpoints(cfg: SellerConfig): EndpointSpec[] {
   const hbar = (pricing: PaymentOptionSpec['pricing']): PaymentOptionSpec => ({ ...HBAR_OPTION(cfg.caip2), pricing });
   const toll = (pricing: PaymentOptionSpec['pricing']): PaymentOptionSpec[] =>
     cfg.TOLL_TOKEN_ID ? [{ network: cfg.caip2, asset: cfg.TOLL_TOKEN_ID, symbol: 'TOLL', decimals: TOLL_DECIMALS, pricing }] : [];
 
-  return [
+  const services: EndpointSpec[] = [
     {
       id: 'infer',
       method: 'POST',
@@ -50,6 +51,17 @@ export function buildEndpoints(cfg: SellerConfig): EndpointSpec[] {
       ],
     },
   ];
+  const auditing: EndpointSpec[] = [
+    {
+      id: 'audit',
+      method: 'POST',
+      path: '/v1/audit',
+      description: 'Audit of another Agora402 seller: manifest consistency, payment integrity probes, description review, attestation written to the audit topic. Flat price per audit.',
+      skills: [SKILL_ASSESSMENT],
+      accepts: [hbar({ kind: 'flat', amount: cfg.AUDIT_PRICE_TINYBARS })],
+    },
+  ];
+  return cfg.SELLER_ROLE === 'services' ? services : cfg.SELLER_ROLE === 'auditor' ? auditing : [...services, ...auditing];
 }
 
 export function buildIdentity(cfg: SellerConfig) {
@@ -60,7 +72,7 @@ export function buildIdentity(cfg: SellerConfig) {
     version: '1.0.0',
     protocol: 'a2a',
     nativeId,
-    skills: [SKILL_TEXT_GENERATION, SKILL_DATA_RETRIEVAL],
+    skills: cfg.SELLER_ROLE === 'services' ? [SKILL_TEXT_GENERATION, SKILL_DATA_RETRIEVAL] : cfg.SELLER_ROLE === 'auditor' ? [SKILL_ASSESSMENT] : [SKILL_TEXT_GENERATION, SKILL_DATA_RETRIEVAL, SKILL_ASSESSMENT],
     uid: cfg.SELLER_NAME,
     domain: safeHost(cfg.SELLER_PUBLIC_URL),
   });

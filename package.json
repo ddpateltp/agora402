@@ -11,16 +11,21 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "typecheck": "tsc -b packages/shared packages/registry packages/seller packages/buyer scripts",
+    "typecheck": "tsc -b packages/shared packages/registry packages/audit packages/seller packages/buyer scripts && npm run typecheck --workspace=packages/web",
     "test": "vitest run",
     "seller": "npm run dev --workspace=packages/seller",
     "buyer": "npm run cli --workspace=packages/buyer --",
-    "dev": "concurrently --names seller,buyer-ui --prefix-colors cyan,magenta \"npm run seller\" \"npm run dev --workspace=packages/buyer\"",
-    "setup:topics": "npm run topics --workspace=scripts",
+    "dev": "concurrently --names seller,auditor,buyer-api,web --prefix-colors cyan,yellow,magenta,green \"npm run seller\" \"npm run auditor\" \"npm run dev --workspace=packages/buyer\" \"npm run web\"",
+    "setup:topics": "npm run topics --workspace=scripts --",
     "setup:token": "npm run token --workspace=scripts",
-    "setup:register": "npm run register --workspace=scripts",
+    "setup:trust": "npm run trust --workspace=scripts --",
+    "setup:register": "npm run register --workspace=scripts --",
     "lint": "eslint packages scripts --ext .ts",
-    "setup:buyer": "npm run buyer --workspace=scripts --"
+    "setup:buyer": "npm run buyer --workspace=scripts --",
+    "audit": "npm run cli --workspace=packages/audit --",
+    "auditor": "SELLER_ROLE=auditor npm run dev --workspace=packages/seller",
+    "setup:auditor": "npm run auditor --workspace=scripts --",
+    "web": "npm run dev --workspace=packages/web"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

@@ -8,8 +8,10 @@
     "topics": "tsx src/create-topics.ts",
     "token": "tsx src/create-token.ts",
     "register": "tsx src/register.ts",
+    "trust": "tsx src/create-trust-topics.ts",
     "balance": "tsx src/balance.ts",
-    "buyer": "tsx src/create-buyer.ts"
+    "buyer": "tsx src/create-buyer.ts",
+    "auditor": "tsx src/create-auditor.ts"
   },
   "dependencies": {
     "@agora402/registry": "*",

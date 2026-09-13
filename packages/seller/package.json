@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@agora402/audit": "*",
     "@agora402/registry": "*",
     "@agora402/shared": "*",
     "@hiero-ledger/sdk": "2.85.0",

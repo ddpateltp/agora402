@@ -17,3 +17,6 @@ dist/
 # local state written by the buyer agent and scripts
 .agora/
 coverage/
+
+# external reference repos cloned for local testing only, never committed
+external/

@@ -2,7 +2,7 @@ import { wrapFetchWithPayment, x402Client, x402HTTPClient } from '@x402/fetch';
 import type { PaymentRequirements, SettleResponse } from '@x402/core/types';
 import { ExactHederaScheme } from '@x402/hedera/exact/client';
 import { createClientHederaSigner } from '@x402/hedera';
-import { Registry, getTransaction, parsePrivateKey, signerControlsAccount, verifyQuoteSignature, type MirrorTransaction } from '@agora402/registry';
+import { Registry, createOperatorClient, effectiveTrust, getTransaction, parsePrivateKey, signerControlsAccount, trustFor, verifyQuoteSignature, type MirrorTransaction, type ReputationLedger, type TrustLedger, type TrustSummary, type VerifiedAttestation } from '@agora402/registry';
 import {
   ServiceListing,
   Quote,
@@ -12,7 +12,11 @@ import {
   hashscanTx,
   hederaNativeId,
   mirrorNodeUrl,
+  newAuditId,
   priceFor,
+  Rating,
+  type Attestation,
+  type AuditStage,
   type EndpointSpec,
   type PaymentOptionSpec,
   type QuoteRequest,
@@ -21,6 +25,7 @@ import {
 export type Stage =
   | 'discovering'
   | 'discovered'
+  | 'trust'
   | 'quoting'
   | 'quoted'
   | 'quote_rejected'
@@ -31,6 +36,8 @@ export type Stage =
   | 'settled'
   | 'verifying'
   | 'verified'
+  | 'rating'
+  | 'rated'
   | 'failed';
 
 export interface AgentEvent {
@@ -46,6 +53,8 @@ export interface Offer {
   option: PaymentOptionSpec;
   /** list price in atomic units for the given estimate, computed locally from the published pricing model */
   listPrice: bigint;
+  /** attestation matched against this listing, null when never audited */
+  trust: TrustSummary | null;
 }
 
 export interface PaidResult<T = unknown> {
@@ -71,6 +80,16 @@ export interface BuyerAgentOptions {
   /** '0.0.0' for HBAR or an HTS token id */
   asset?: string;
   registry?: Registry;
+  /** audit topic reader; without it every seller is treated as unverified */
+  trust?: TrustLedger;
+  /** reputation topic writer, for rate(); the buyer account pays for the message */
+  reputation?: Pick<ReputationLedger, 'publish' | 'topicId' | 'network'>;
+  /**
+   * Trust policy. Unset: buy from anyone except sellers attested dangerous,
+   * verified sellers ranked first. A number: only sellers holding a current
+   * safe attestation with at least this score.
+   */
+  minTrust?: number;
   fetchImpl?: typeof fetch;
   onEvent?: (e: AgentEvent) => void;
   /** check that the quote signer key belongs to the payTo account (one mirror node call) */
@@ -86,6 +105,8 @@ export interface BuyerAgentOptions {
 export class BuyerAgent {
   readonly uaid: string;
   readonly asset: string;
+  /** current trust policy, see BuyerAgentOptions.minTrust; adjustable between runs */
+  minTrust: number | undefined;
   private spent = 0n;
   private readonly fetchImpl: typeof fetch;
   private readonly client: x402Client;
@@ -97,6 +118,7 @@ export class BuyerAgent {
   constructor(private readonly opts: BuyerAgentOptions) {
     this.fetchImpl = opts.fetchImpl ?? fetch;
     this.asset = opts.asset ?? '0.0.0';
+    this.minTrust = opts.minTrust;
     this.mirror = mirrorNodeUrl(opts.network);
     this.uaid = generateUaid({
       registry: 'agora402',
@@ -149,12 +171,15 @@ export class BuyerAgent {
   /** Listings from the HCS registry, or a single seller by URL when given. */
   async discover(endpointId: string, sellerUrl?: string): Promise<Offer[]> {
     this.emit('discovering', sellerUrl ? `reading manifest at ${sellerUrl}` : `reading registry topic ${this.opts.registry?.topicId ?? '(none)'}`);
-    const listings: ServiceListing[] = sellerUrl ? [await this.listingFrom(sellerUrl)] : this.opts.registry ? await this.opts.registry.listServices() : [];
+    const [listings, attestations] = await Promise.all([
+      sellerUrl ? this.listingFrom(sellerUrl).then((l) => [l]) : this.opts.registry ? this.opts.registry.listServices() : Promise.resolve([] as ServiceListing[]),
+      this.opts.trust ? this.opts.trust.attestations() : Promise.resolve(new Map<string, VerifiedAttestation>()),
+    ]);
     const offers: Offer[] = [];
     for (const listing of listings) {
       const endpoint = listing.endpoints.find((e) => e.id === endpointId);
       const option = endpoint?.accepts.find((a) => a.asset === this.asset && a.network === `hedera:${this.opts.network}`);
-      if (endpoint && option) offers.push({ listing, endpoint, option, listPrice: 0n });
+      if (endpoint && option) offers.push({ listing, endpoint, option, listPrice: 0n, trust: trustFor(listing, attestations) });
     }
     this.emit('discovered', `${offers.length} seller(s) offer "${endpointId}" in ${this.symbol()}`, { sellers: offers.map((o) => o.listing.name) });
     return offers;
@@ -166,11 +191,37 @@ export class BuyerAgent {
     return ServiceListing.parse(await res.json());
   }
 
-  /** Price every offer for this work using the published model and sort cheapest first. */
+  /**
+   * Apply the trust policy, price every remaining offer for this work using
+   * the published model, then sort: verified sellers first, cheapest within
+   * each group. A dangerous verdict is never bought from.
+   */
   rank(offers: Offer[], estimate: QuoteRequest['estimate']): Offer[] {
-    return offers
+    const kept: Offer[] = [];
+    const dropped: Array<{ seller: string; reason: string }> = [];
+    for (const o of offers) {
+      const score = effectiveTrust(o.trust);
+      if (o.trust?.current && o.trust.verdict === 'dangerous') dropped.push({ seller: o.listing.name, reason: `attested dangerous (${o.trust.risk})` });
+      else if (this.minTrust !== undefined && (score === null || score < this.minTrust)) {
+        dropped.push({ seller: o.listing.name, reason: score === null ? (o.trust ? 'attestation is for an earlier version of the listing' : 'no attestation') : `trust ${score} below ${this.minTrust}` });
+      } else kept.push(o);
+    }
+    if (offers.length > 0) {
+      const verified = kept.filter((o) => effectiveTrust(o.trust) !== null);
+      this.emit(
+        'trust',
+        `${verified.length} verified, ${kept.length - verified.length} unverified, ${dropped.length} excluded${this.minTrust !== undefined ? ` (policy: trust >= ${this.minTrust})` : ''}`,
+        { minTrust: this.minTrust ?? null, kept: kept.map((o) => ({ seller: o.listing.name, trust: effectiveTrust(o.trust), verdict: o.trust?.verdict ?? null, auditor: o.trust?.auditorAccount ?? null })), dropped },
+      );
+    }
+    return kept
       .map((o) => ({ ...o, listPrice: priceFor(o.option.pricing, estimate) }))
-      .sort((a, b) => (a.listPrice < b.listPrice ? -1 : a.listPrice > b.listPrice ? 1 : 0));
+      .sort((a, b) => {
+        const ta = effectiveTrust(a.trust) !== null ? 1 : 0;
+        const tb = effectiveTrust(b.trust) !== null ? 1 : 0;
+        if (ta !== tb) return tb - ta;
+        return a.listPrice < b.listPrice ? -1 : a.listPrice > b.listPrice ? 1 : 0;
+      });
   }
 
   // ---- negotiation -----------------------------------------------------
@@ -213,7 +264,7 @@ export class BuyerAgent {
     const body = offer.endpoint.method === 'POST' ? JSON.stringify({ ...(init.body as Record<string, unknown>), ...(quote ? { quoteId: quote.quoteId } : {}) }) : undefined;
 
     this.lastSelected = null;
-    this.emit('requesting', `${offer.endpoint.method} ${url.pathname} at ${offer.listing.name}`);
+    this.emit('requesting', `${offer.endpoint.method} ${url.pathname} at ${offer.listing.name}`, { url: url.toString(), baseUrl: offer.listing.baseUrl, endpointId: offer.endpoint.id });
     const res = await this.paidFetch(url, { method: offer.endpoint.method, headers: body ? { 'content-type': 'application/json' } : undefined, body });
     const text = await res.text();
     let parsed: unknown = text;
@@ -281,7 +332,7 @@ export class BuyerAgent {
     const body = { messages, max_tokens: o.maxTokens ?? 256 };
     const estimate = estimateChatInput(body);
     const offers = this.rank(await this.discover('infer', o.sellerUrl), estimate);
-    if (offers.length === 0) throw new Error('no seller offers "infer" for this asset');
+    if (offers.length === 0) throw new Error('no seller offers "infer" for this asset that passes the trust policy');
     const offer = offers[0];
     const counter = o.counterBps && o.counterBps < 10000 ? (offer.listPrice * BigInt(o.counterBps)) / 10000n : undefined;
     const quote = await this.quote(offer, estimate, counter);
@@ -289,9 +340,56 @@ export class BuyerAgent {
     return { ...result, offer };
   }
 
+  /**
+   * Buy an audit of another seller from an auditor agent. The auditor is
+   * found in the registry like any seller (endpoint "audit"); the buyer
+   * generates the auditId so it can follow the auditor's progress stream
+   * while the paid request is open.
+   */
+  async audit(subject: { uaid?: string; sellerUrl?: string }, o: { auditorUrl?: string; auditId?: string; counterBps?: number } = {}): Promise<PaidResult<AuditPurchase> & { offer: Offer; auditId: string }> {
+    const offers = this.rank(await this.discover('audit', o.auditorUrl), { units: 1 });
+    if (offers.length === 0) throw new Error('no auditor offers "audit" for this asset that passes the trust policy');
+    const offer = offers[0];
+    const auditId = o.auditId ?? newAuditId();
+    const counter = o.counterBps && o.counterBps < 10000 ? (offer.listPrice * BigInt(o.counterBps)) / 10000n : undefined;
+    const quote = await this.quote(offer, { units: 1 }, counter);
+    const result = await this.call<AuditPurchase>(offer, { body: { subject: subject.uaid, sellerUrl: subject.sellerUrl, auditId } }, quote);
+    return { ...result, offer, auditId };
+  }
+
+  /**
+   * Rate a seller after paying it. The rating names the settlement so readers
+   * can check on the mirror node that this account really paid that seller;
+   * one settlement backs one rating.
+   */
+  async rate(input: { subject: string; subjectAccount: string; transactionId: string; score: number; comment?: string }): Promise<{ rating: Rating; transactionId: string; sequenceNumber: number }> {
+    if (!this.opts.reputation) throw new Error('no reputation topic configured (REPUTATION_TOPIC_ID)');
+    const rating = Rating.parse({
+      v: 1,
+      type: 'rating',
+      subject: input.subject,
+      subjectAccount: input.subjectAccount,
+      rater: this.uaid,
+      raterAccount: this.opts.accountId,
+      transactionId: input.transactionId,
+      score: input.score,
+      comment: input.comment?.trim() || undefined,
+      issuedAt: new Date().toISOString(),
+    } satisfies Rating);
+    this.emit('rating', `rating ${input.subjectAccount} ${input.score}/5, citing settlement ${input.transactionId}`, { subject: input.subject });
+    const client = createOperatorClient({ network: this.opts.network, accountId: this.opts.accountId, privateKey: this.opts.privateKey });
+    try {
+      const r = await this.opts.reputation.publish(client, rating);
+      this.emit('rated', `rating recorded on topic ${this.opts.reputation.topicId} seq ${r.sequenceNumber}`, { ...r, topicId: this.opts.reputation.topicId });
+      return { rating, ...r };
+    } finally {
+      client.close();
+    }
+  }
+
   async hbarRate(o: { sellerUrl?: string } = {}): Promise<PaidResult<Record<string, unknown>> & { offer: Offer }> {
     const offers = this.rank(await this.discover('hbar-rate', o.sellerUrl), { units: 1 });
-    if (offers.length === 0) throw new Error('no seller offers "hbar-rate" for this asset');
+    if (offers.length === 0) throw new Error('no seller offers "hbar-rate" for this asset that passes the trust policy');
     const offer = offers[0];
     const quote = await this.quote(offer, { units: 1 });
     const result = await this.call<Record<string, unknown>>(offer, {}, quote);
@@ -336,6 +434,17 @@ export class BuyerAgent {
   private emit(stage: Stage, message: string, data?: Record<string, unknown>) {
     this.opts.onEvent?.({ stage, message, at: new Date().toISOString(), data });
   }
+}
+
+/** Body of a paid POST /v1/audit response. */
+export interface AuditPurchase {
+  auditId: string;
+  subject: { uaid: string; name: string; payTo: string };
+  attestation: Attestation;
+  stages: Array<AuditStage & { evidence: Record<string, unknown> }>;
+  topicId: string | null;
+  topicUrl: string | null;
+  recorded: boolean;
 }
 
 export interface ChatCompletion {

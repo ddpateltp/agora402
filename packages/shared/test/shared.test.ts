@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { listingContentHash, maxSeverity, trustScoreFrom, verdictFrom } from '../src/index.js';
 import {
   base58Encode,
   canonicalIdentityJson,
@@ -117,5 +118,43 @@ describe('schemas', () => {
     const b = canonicalQuoteBytes({ ...base, basis: { a: { c: 3, d: 2 }, b: 1 } });
     expect(Buffer.from(a).toString()).toBe(Buffer.from(b).toString());
     expect(() => Quote.parse({ ...base, signature: 'ab', signerPublicKey: 'cd' })).not.toThrow();
+  });
+});
+
+describe('trust helpers', () => {
+  const listing = {
+    uaid: 'uaid:aid:abc;uid=0;registry=agora402;proto=a2a;nativeId=hedera:testnet:0.0.1001',
+    name: 'seller',
+    version: '1.0.0',
+    payTo: '0.0.1001',
+    baseUrl: 'http://localhost:4402',
+    quotePath: '/a2a/quote',
+    facilitator: 'https://api.testnet.blocky402.com',
+    endpoints: [{ id: 'infer', method: 'POST' as const, path: '/v1/infer', description: 'llm', skills: [], accepts: [{ network: 'hedera:testnet' as const, asset: '0.0.0', symbol: 'HBAR', decimals: 8, pricing: { kind: 'flat' as const, amount: '100000' } }] }],
+    publishedAt: '2026-09-10T00:00:00.000Z',
+  };
+  it('content hash ignores metadata but not prices or endpoints', () => {
+    const h = listingContentHash(listing);
+    expect(h).toMatch(/^[0-9a-f]{64}$/);
+    expect(listingContentHash({ ...listing, name: 'renamed', version: '2.0.0', publishedAt: 'later', receiptsTopicId: '0.0.9' })).toBe(h);
+    expect(listingContentHash({ ...listing, baseUrl: 'http://localhost:4402/' })).toBe(h);
+    const pricier = { ...listing, endpoints: [{ ...listing.endpoints[0], accepts: [{ ...listing.endpoints[0].accepts[0], pricing: { kind: 'flat' as const, amount: '200000' } }] }] };
+    expect(listingContentHash(pricier)).not.toBe(h);
+    expect(listingContentHash({ ...listing, payTo: '0.0.1002' })).not.toBe(h);
+  });
+  it('scores and verdicts are derived from findings deterministically', () => {
+    expect(trustScoreFrom([])).toBe(100);
+    expect(verdictFrom([])).toBe('safe');
+    const findings = [
+      { severity: 'low' as const, title: 'a', detail: '' },
+      { severity: 'medium' as const, title: 'b', detail: '' },
+    ];
+    expect(trustScoreFrom(findings)).toBe(84);
+    expect(verdictFrom(findings)).toBe('safe');
+    expect(maxSeverity(findings)).toBe('medium');
+    const bad = [...findings, { severity: 'critical' as const, title: 'c', detail: '' }];
+    expect(trustScoreFrom(bad)).toBe(24);
+    expect(verdictFrom(bad)).toBe('dangerous');
+    expect(trustScoreFrom(Array(3).fill({ severity: 'critical', title: 'x', detail: '' }))).toBe(0);
   });
 });
