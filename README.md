@@ -275,6 +275,15 @@ fake facilitator and a stubbed mirror node, so `npm test` needs no network. CI b
 - One buyer, one seller and one auditor on one machine. Nothing here has been load tested.
 - Prices are in tinybars of HBAR or TOLL units; there is no fiat oracle in the price path.
 
+## AI tool usage
+
+AI tools used: Claude (Claude Code and Cowork) for code drafting, test scaffolding, PR descriptions and submission
+text, for Agora402 and for the five Hedera Harness pull requests above. All design decisions, the choice of what to
+build and what to fix, verification against the live harness and Hedera testnet, and the final review were done by
+Divyesh Patel. Prompts and planning artefacts for the harness work are in
+[`hedera_harness_contribution/prompts`](hedera_harness_contribution/prompts/README.md) and
+[`hedera_harness_contribution/planning`](hedera_harness_contribution/planning/).
+
 ## Licence
 
 MIT
