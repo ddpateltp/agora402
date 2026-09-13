@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router';
 import { session } from '../lib/session';
 import { fmt } from '../lib/money';
 import HashLink from './HashLink.vue';
+import { DOCS_URL, REPO_URL } from '../lib/links';
 
 const route = useRoute();
 const cfg = computed(() => session.config);
@@ -27,20 +28,23 @@ const links = [
 
     <nav>
       <router-link v-for="l in links" :key="l.to" :to="l.to">{{ l.label }}</router-link>
-      <a href="https://github.com/ddpateltp/agora402" target="_blank" rel="noopener">GitHub</a>
+      <a :href="REPO_URL" target="_blank" rel="noopener">GitHub</a>
     </nav>
 
-    <router-link v-if="landing" to="/market" class="btn primary cta">Open the marketplace <span aria-hidden="true">↗</span></router-link>
-    <div class="session" v-else-if="cfg">
-      <span class="dim">buyer</span>
-      <HashLink kind="account" :id="cfg.buyer" />
-      <span class="sep"></span>
-      <span class="dim">spent</span>
-      <b>{{ fmt(session.spent, 8, 'HBAR', 6) }}</b>
-      <template v-if="session.remaining !== null">
-        <span class="dim">left</span>
-        <b>{{ fmt(session.remaining, 8, 'HBAR', 6) }}</b>
-      </template>
+    <div class="right">
+      <div class="session" v-if="!landing && cfg">
+        <span class="dim">buyer</span>
+        <HashLink kind="account" :id="cfg.buyer" />
+        <span class="sep"></span>
+        <span class="dim">spent</span>
+        <b>{{ fmt(session.spent, 8, 'HBAR', 6) }}</b>
+        <template v-if="session.remaining !== null">
+          <span class="dim">left</span>
+          <b>{{ fmt(session.remaining, 8, 'HBAR', 6) }}</b>
+        </template>
+      </div>
+      <a :href="DOCS_URL" target="_blank" rel="noopener" class="btn cta">Docs <span aria-hidden="true">↗</span></a>
+      <router-link v-if="landing" to="/market" class="btn primary cta">Open the marketplace <span aria-hidden="true">↗</span></router-link>
     </div>
   </header>
 </template>
@@ -56,8 +60,9 @@ nav { display: flex; gap: 36px; font-family: var(--font-mono); font-size: 13px; 
 nav a { padding: 4px 0; border-bottom: 1px solid transparent; color: var(--color-black); transition: color 120ms; }
 nav a:hover { color: var(--color-orange); }
 nav a.router-link-active { border-bottom-color: var(--color-black); }
-.cta { padding: 9px 18px; }
-.session { display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+.right { display: flex; align-items: center; gap: 10px; }
+.cta { padding: 9px 16px; }
+.session { display: flex; align-items: center; gap: 8px; margin-right: 8px; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
 .session b { font-weight: 700; text-transform: none; }
 .sep { width: 1px; height: 14px; background: var(--color-light-gray); }
 @media (max-width: 1100px) { nav { gap: 22px; } .session { display: none; } }
@@ -65,5 +70,6 @@ nav a.router-link-active { border-bottom-color: var(--color-black); }
   .top { flex-wrap: wrap; gap: 12px 20px; padding: 12px 18px; }
   nav { order: 3; width: 100%; gap: 18px; font-size: 12px; overflow-x: auto; }
   .cta { padding: 8px 12px; }
+  .right { gap: 8px; }
 }
 </style>

@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { session } from '../lib/session';
 import HashLink from './HashLink.vue';
+import { DOCS_URL, REPO_URL } from '../lib/links';
 
 defineProps<{ slim?: boolean }>();
 
@@ -26,8 +27,8 @@ const product = [
   { to: '/demo', label: 'Demo walkthrough' },
 ];
 const resources = [
-  { href: 'https://github.com/ddpateltp/agora402', label: 'GitHub' },
-  { href: 'https://agora402.mintlify.site', label: 'Documentation' },
+  { href: REPO_URL, label: 'GitHub' },
+  { href: DOCS_URL, label: 'Documentation' },
   { href: 'https://github.com/ddpateltp/hedera-harness', label: 'Hedera Harness fork' },
   { href: 'https://hashscan.io/testnet', label: 'HashScan' },
 ];
